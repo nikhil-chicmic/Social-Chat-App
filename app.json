@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Firebase-practice",
-    "slug": "Firebase-practice",
+    "name": "SocialHub",
+    "slug": "social-hub",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -12,10 +12,10 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "scheme": "socialhub",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.nikhil.myapp",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "bundleIdentifier": "com.nikhil.myapp"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,8 +24,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.nikhil.myapp",
-      "googleServicesFile": "./google-services.json"
+      "package": "com.nikhil.myapp"
     },
     "web": {
       "favicon": "./assets/favicon.png"

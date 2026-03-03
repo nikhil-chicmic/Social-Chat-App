@@ -1,19 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
-import {
-  GoogleAuthProvider,
-  signInWithCredential,
-  signInWithEmailAndPassword,
-} from "firebase/auth";
 import React, { useEffect, useState } from "react";
-import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { auth } from "../../firebase";
-import { styles } from "./styles";
+import {
+  ActivityIndicator,
+  Alert,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { supabase } from "../../lib/supabase";
+import { styles } from "./Home/styles";
 
 const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
     GoogleSignin.configure({
@@ -30,8 +33,13 @@ const LoginScreen = ({ navigation }: any) => {
 
     try {
       setLoading(true);
-      await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate("Main");
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) throw error;
     } catch (error: any) {
       Alert.alert("Login Failed", error.message);
     } finally {
@@ -41,21 +49,70 @@ const LoginScreen = ({ navigation }: any) => {
 
   const handleGoogleLogin = async () => {
     try {
+      setGoogleLoading(true);
+
       await GoogleSignin.hasPlayServices();
       await GoogleSignin.signOut();
+
       const userInfo = await GoogleSignin.signIn();
       const { idToken } = await GoogleSignin.getTokens();
 
-      if (!idToken) {
-        throw new Error("No ID token received");
+      if (!idToken) throw new Error("No ID token received");
+
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: "google",
+        token: idToken,
+      });
+
+      if (error) throw error;
+
+      const user = data.user;
+
+      if (user) {
+        const { data: existing } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+
+        if (!existing) {
+          const baseUsername =
+            user.email?.split("@")[0].toLowerCase() || "user";
+
+          let finalUsername = baseUsername;
+          let counter = 1;
+
+          while (true) {
+            const { data: usernameCheck } = await supabase
+              .from("users")
+              .select("username")
+              .eq("username", finalUsername)
+              .single();
+
+            if (!usernameCheck) break;
+
+            finalUsername = `${baseUsername}${counter}`;
+            counter++;
+          }
+
+          await supabase.from("users").insert([
+            {
+              id: user.id,
+              username: finalUsername,
+              email: user.email,
+              name: user.user_metadata?.full_name || "",
+              photo_url: user.user_metadata?.avatar_url || "",
+              bio: "",
+              followers_count: 0,
+              following_count: 0,
+            },
+          ]);
+        }
       }
-
-      const credential = GoogleAuthProvider.credential(idToken);
-      await signInWithCredential(auth, credential);
-
-      navigation.replace("Main");
     } catch (error: any) {
       Alert.alert("Google Login Failed", error.message);
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -109,9 +166,20 @@ const LoginScreen = ({ navigation }: any) => {
         <TouchableOpacity
           style={styles.googleButton}
           onPress={handleGoogleLogin}
+          disabled={googleLoading}
         >
-          <Ionicons style={{ marginRight: 10 }} name="logo-google" size={24} />
-          <Text style={styles.googleButtonText}>Continue with Google</Text>
+          {!googleLoading ? (
+            <>
+              <Ionicons
+                style={{ marginRight: 10 }}
+                name="logo-google"
+                size={24}
+              />
+              <Text style={styles.googleButtonText}>Continue with Google</Text>
+            </>
+          ) : (
+            <ActivityIndicator size="large" color="black" />
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity

@@ -1,5 +1,4 @@
 import { useNavigation } from "@react-navigation/native";
-import { createUserWithEmailAndPassword } from "firebase/auth";
 import React, { useState } from "react";
 import {
   Alert,
@@ -9,20 +8,75 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { auth } from "../../firebase";
+import { supabase } from "../../lib/supabase";
 import { DarkTheme } from "../theme/DarkTheme";
 
 const SignupScreen = () => {
   const navigation = useNavigation<any>();
+
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleSignup = async () => {
+    const trimmedUsername = username.trim().toLowerCase();
+    const trimmedEmail = email.trim();
+
+    if (!trimmedUsername || !trimmedEmail || !password) {
+      Alert.alert("Error", "All fields are required");
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert("Error", "Password must be at least 6 characters");
+      return;
+    }
+
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      navigation.popToTop();
-      navigation.navigate("Home");
+      setLoading(true);
+
+      const { data: existingUsername } = await supabase
+        .from("users")
+        .select("username")
+        .eq("username", trimmedUsername)
+        .single();
+
+      if (existingUsername) {
+        throw new Error("Username already taken");
+      }
+
+      const { data: signUpData, error: signUpError } =
+        await supabase.auth.signUp({
+          email: trimmedEmail,
+          password,
+        });
+
+      if (signUpError) throw signUpError;
+
+      const user = signUpData.user;
+
+      if (!user) throw new Error("User creation failed");
+
+      const { error: insertError } = await supabase.from("users").insert([
+        {
+          id: user.id,
+          username: trimmedUsername,
+          bio: "",
+          photo_url: "",
+          followers_count: 0,
+          following_count: 0,
+        },
+      ]);
+
+      if (insertError) {
+        await supabase.auth.signOut();
+        throw insertError;
+      }
+
+      setLoading(false);
     } catch (error: any) {
+      setLoading(false);
       Alert.alert("Signup Error", error.message);
     }
   };
@@ -38,6 +92,15 @@ const SignupScreen = () => {
       <View style={styles.card}>
         <Text style={styles.title}>Create Account</Text>
         <Text style={styles.subtitle}>Start your journey with us</Text>
+
+        <TextInput
+          placeholder="Username"
+          placeholderTextColor="#9CA3AF"
+          style={styles.input}
+          value={username}
+          onChangeText={setUsername}
+          autoCapitalize="none"
+        />
 
         <TextInput
           placeholder="Email address"
@@ -58,8 +121,14 @@ const SignupScreen = () => {
           secureTextEntry
         />
 
-        <TouchableOpacity style={styles.primaryButton} onPress={handleSignup}>
-          <Text style={styles.primaryButtonText}>Create Account</Text>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={handleSignup}
+          disabled={loading}
+        >
+          <Text style={styles.primaryButtonText}>
+            {loading ? "Creating Account..." : "Create Account"}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -104,10 +173,7 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     marginBottom: 25,
   },
-
   header: {
-    flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
     marginTop: -100,
     marginBottom: 50,
@@ -115,9 +181,8 @@ const styles = StyleSheet.create({
   appText: {
     color: DarkTheme.PRIMARY_BUTTON,
     fontSize: 40,
-    fontWeight: 900,
+    fontWeight: "900",
   },
-
   input: {
     borderWidth: 1,
     borderColor: "grey",

@@ -8,10 +8,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import OurStory from "../components/OurStory";
-import Post from "../components/Post";
-import StoryCircle from "../components/StoryCircle";
-import { DarkTheme } from "../theme/DarkTheme";
+import OurStory from "../../components/OurStory";
+import Post from "../../components/Post";
+import StoryCircle from "../../components/StoryCircle";
+import { DarkTheme } from "../../theme/DarkTheme";
 
 const HomeScreen = () => {
   return (
