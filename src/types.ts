@@ -1,4 +1,4 @@
 export type AuthContextType = {
-  user: any;
-  loading: boolean;
+    user: any;
+    loading: boolean;
 };

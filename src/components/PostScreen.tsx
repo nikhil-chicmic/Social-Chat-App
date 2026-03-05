@@ -1,34 +1,28 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View, } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
 const blankProfile = require("../../assets/BlankProfile.png");
-const timeAgo = (dateString: string) => {
-    const diff = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
-    const m = 60, h = 3600, d = 86400;
-    if (diff < m)
-        return `${diff}s ago`;
-    if (diff < h)
-        return `${Math.floor(diff / m)}m ago`;
-    if (diff < d)
-        return `${Math.floor(diff / h)}h ago`;
-    return `${Math.floor(diff / d)}d ago`;
+const timeAgo = (date: string) => {
+    const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+    const m = 60;
+    const h = 3600;
+    const d = 86400;
+    if (seconds < m)
+        return `${seconds}s ago`;
+    if (seconds < h)
+        return `${Math.floor(seconds / m)}m ago`;
+    if (seconds < d)
+        return `${Math.floor(seconds / h)}h ago`;
+    return `${Math.floor(seconds / d)}d ago`;
 };
-const Post = ({ post }: any) => {
+const PostScreen = ({ route, navigation }: any) => {
+    const { post } = route.params;
+    const [profile, setProfile] = useState<any>(post?.users ?? null);
+    const [loading, setLoading] = useState(!post?.users);
     const [liked, setLiked] = useState(false);
-    const [likesCount, setLikesCount] = useState(post.likes_count ?? 0);
-    const username = post?.users?.username ?? "user";
-    const avatar = post?.users?.photo_url
-        ? { uri: post.users.photo_url }
-        : blankProfile;
-    const timeText = useMemo(() => timeAgo(post.created_at), [post.created_at]);
-    const loadLikesCount = async () => {
-        const { count } = await supabase
-            .from("likes")
-            .select("*", { count: "exact", head: true })
-            .eq("post_id", post.id);
-        setLikesCount(count ?? 0);
-    };
+    const [likesCount, setLikesCount] = useState(post?.likes_count ?? 0);
     useEffect(() => {
         checkLikeStatus();
         loadLikesCount();
@@ -42,6 +36,13 @@ const Post = ({ post }: any) => {
             .eq("user_id", user?.id)
             .single();
         setLiked(!!data);
+    };
+    const loadLikesCount = async () => {
+        const { count } = await supabase
+            .from("likes")
+            .select("*", { count: "exact", head: true })
+            .eq("post_id", post.id);
+        setLikesCount(count ?? 0);
     };
     const toggleLike = async () => {
         const { data: { user }, } = await supabase.auth.getUser();
@@ -77,7 +78,45 @@ const Post = ({ post }: any) => {
             }
         }
     };
-    return (<View style={styles.postContainer}>
+    useEffect(() => {
+        if (post?.users)
+            return;
+        const fetchUser = async () => {
+            const { data } = await supabase
+                .from("users")
+                .select("id,username,photo_url")
+                .eq("id", post.user_id)
+                .single();
+            if (data)
+                setProfile(data);
+            setLoading(false);
+        };
+        fetchUser();
+    }, []);
+    const timeText = useMemo(() => {
+        if (!post?.created_at)
+            return "";
+        return timeAgo(post.created_at);
+    }, [post]);
+    if (loading) {
+        return (<SafeAreaView style={styles.center}>
+        <ActivityIndicator size="large" color="#fff"/>
+      </SafeAreaView>);
+    }
+    const avatar = profile?.photo_url ? { uri: profile.photo_url } : blankProfile;
+    const username = profile?.username ?? "user";
+    return (<SafeAreaView style={styles.container}>
+      
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={26} color="#fff"/>
+        </TouchableOpacity>
+
+        <Text style={styles.title}>Post</Text>
+
+        <View style={{ width: 26 }}/>
+      </View>
+
       
       <View style={styles.header}>
         <View style={styles.userInfo}>
@@ -116,25 +155,45 @@ const Post = ({ post }: any) => {
       <Text style={styles.likesText}>{likesCount.toLocaleString()} likes</Text>
 
       
-      {post.caption ? (<Text style={styles.caption}>
+      {post?.caption ? (<Text style={styles.caption}>
           <Text style={styles.username}>{username} </Text>
           {post.caption}
         </Text>) : null}
 
       
       <Text style={styles.timeText}>{timeText}</Text>
-    </View>);
+    </SafeAreaView>);
 };
-export default Post;
+export default PostScreen;
 const styles = StyleSheet.create({
-    postContainer: {
-        marginBottom: 20,
+    container: {
+        flex: 1,
+        backgroundColor: "#000",
+    },
+    center: {
+        flex: 1,
+        backgroundColor: "#000",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    topBar: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+    },
+    title: {
+        color: "#fff",
+        fontSize: 18,
+        fontWeight: "600",
     },
     header: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
     },
     userInfo: {
         flexDirection: "row",
@@ -148,17 +207,18 @@ const styles = StyleSheet.create({
     },
     username: {
         color: "#fff",
-        fontWeight: "600",
+        fontWeight: "900",
     },
     postImage: {
         width: "100%",
-        height: 400,
+        height: 420,
+        backgroundColor: "#111",
     },
     actionsRow: {
         flexDirection: "row",
         justifyContent: "space-between",
         paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingVertical: 12,
     },
     leftActions: {
         flexDirection: "row",
@@ -178,6 +238,6 @@ const styles = StyleSheet.create({
         color: "gray",
         fontSize: 12,
         paddingHorizontal: 12,
-        marginTop: 4,
+        marginTop: 6,
     },
 });
