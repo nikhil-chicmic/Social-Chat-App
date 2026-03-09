@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -9,7 +10,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../lib/supabase";
 import { DarkTheme } from "../theme/DarkTheme";
 const blankProfile = require("../../assets/BlankProfile.png");
@@ -62,9 +62,7 @@ const NotificationScreen = () => {
     const avatar = item.sender?.photo_url
       ? { uri: item.sender.photo_url }
       : blankProfile;
-      
-    // Format timestamp nicely if needed here
-    
+
     return (
       <View style={styles.row}>
         <Image source={avatar} style={styles.avatar} />
@@ -88,7 +86,7 @@ const NotificationScreen = () => {
           />
         ) : item.type === "follow" ? (
           <View style={styles.iconIndicator}>
-             <Ionicons name="person-add" size={16} color="#8E8E93" />
+            <Ionicons name="person-add" size={16} color="#8E8E93" />
           </View>
         ) : null}
       </View>
@@ -113,7 +111,9 @@ const NotificationScreen = () => {
             <Ionicons name="notifications-off-outline" size={48} color="#555" />
           </View>
           <Text style={styles.emptyTitle}>Nothing here yet</Text>
-          <Text style={styles.emptyText}>When someone likes your posts or follows you, you'll see it here.</Text>
+          <Text style={styles.emptyText}>
+            When someone likes your posts or follows you, you'll see it here.
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -122,9 +122,9 @@ const NotificationScreen = () => {
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 20 }}
           refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
-              onRefresh={onRefresh} 
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
               tintColor={DarkTheme.PRIMARY_BUTTON}
             />
           }

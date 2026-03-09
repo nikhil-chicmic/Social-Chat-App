@@ -1,19 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, useFocusEffect } from "@react-navigation/native";
-import React, { useContext, useState, useCallback } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import {
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
+    ActivityIndicator,
+    FlatList,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import ChatItem from "../../components/ChatItem";
-import { DarkTheme } from "../../theme/DarkTheme";
-import AuthContext from "../../navigation/AuthContext";
 import { supabase } from "../../../lib/supabase";
+import ChatItem from "../../components/ChatItem";
+import AuthContext from "../../navigation/AuthContext";
+import { DarkTheme } from "../../theme/DarkTheme";
+import { styles } from "./styles";
+
+const CONV_CACHE_KEY = "chat_conversation_cache";
 
 const MessageScreen = () => {
   const navigation = useNavigation<any>();
@@ -21,91 +24,188 @@ const MessageScreen = () => {
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Load the local conversation cache (conversation_id -> otherUserId)
+  const loadConvCache = async (): Promise<Record<string, string>> => {
+    try {
+      const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  };
+
   const fetchConversations = async () => {
     if (!user?.id) return;
-    
+
     setLoading(true);
-    
+
     try {
-      // 1. Fetch conversation IDs where current user is a participant
-      const { data: myParticipants, error: myPartErr } = await supabase
+      // Step 1: Get all conversation IDs the current user participates in
+      const { data: myParticipations, error: partError } = await supabase
         .from("conversation_participants")
         .select("conversation_id")
         .eq("user_id", user.id);
 
-      if (myPartErr) throw myPartErr;
-      
-      if (!myParticipants || myParticipants.length === 0) {
+      if (partError) {
+        console.error("Error fetching participations:", partError);
+      }
+
+      if (!myParticipations || myParticipations.length === 0) {
         setConversations([]);
+        setLoading(false);
         return;
       }
 
-      const conversationIds = myParticipants.map(p => p.conversation_id);
+      const conversationIds = myParticipations.map(
+        (p) => p.conversation_id
+      );
 
-      // 2. Fetch the OTHER participants in those conversations
-      const { data: otherParticipants, error: otherPartErr } = await supabase
+      // Step 2: Try to get other participants from conversation_participants
+      const { data: otherParticipants } = await supabase
         .from("conversation_participants")
-        .select("conversation_id, user_id")
+        .select("conversation_id,user_id")
         .in("conversation_id", conversationIds)
         .neq("user_id", user.id);
 
-      if (otherPartErr) throw otherPartErr;
+      // Build map: conversation_id -> other user ID
+      const convToOtherUserId = new Map<string, string>();
 
-      const otherUserIds = otherParticipants ? otherParticipants.map(p => p.user_id) : [];
+      // From conversation_participants (may return results or be empty due to RLS)
+      otherParticipants?.forEach((p) => {
+        convToOtherUserId.set(p.conversation_id, p.user_id);
+      });
 
-      // 3. Fetch the profiles for these other users
-      let usersMap = new Map();
-      if (otherUserIds.length > 0) {
-        const { data: usersData, error: usersError } = await supabase
-          .from("users")
-          .select("*")
-          .in("id", otherUserIds);
+      // Step 3: Get ALL messages for these conversations
+      const { data: allMessages } = await supabase
+        .from("messages")
+        .select("conversation_id,content,created_at,sender_id")
+        .in("conversation_id", conversationIds)
+        .order("created_at", { ascending: false });
 
-        if (usersError) throw usersError;
-        if (usersData) {
-          usersData.forEach(u => usersMap.set(u.id, u));
+      // From messages: identify other users by sender_id != me
+      allMessages?.forEach((msg) => {
+        if (
+          msg.sender_id !== user.id &&
+          !convToOtherUserId.has(msg.conversation_id)
+        ) {
+          convToOtherUserId.set(msg.conversation_id, msg.sender_id);
         }
+      });
+
+      // Step 4: Load cached mappings for conversations we still can't identify
+      const convCache = await loadConvCache();
+      conversationIds.forEach((convId) => {
+        if (!convToOtherUserId.has(convId) && convCache[convId]) {
+          convToOtherUserId.set(convId, convCache[convId]);
+        }
+      });
+
+      // Build latest message map
+      const latestMsgMap = new Map<string, any>();
+      allMessages?.forEach((msg) => {
+        if (!latestMsgMap.has(msg.conversation_id)) {
+          latestMsgMap.set(msg.conversation_id, msg);
+        }
+      });
+
+      // Step 5: Get user details for all other user IDs
+      const otherUserIds = [...new Set(convToOtherUserId.values())];
+
+      if (otherUserIds.length === 0) {
+        setConversations([]);
+        setLoading(false);
+        return;
       }
 
-      // 4. Assemble final structured data
-      const enrichedConversations = await Promise.all(
-        conversationIds.map(async (convId) => {
-          // Find the other participant for this conversation
-          const participantRecord = otherParticipants?.find(p => p.conversation_id === convId);
-          const otherUserId = participantRecord?.user_id;
-          const otherUser = otherUserId ? usersMap.get(otherUserId) : null;
-          
-          // Attempt to get the latest message
-          const { data: latestMsg } = await supabase
-            .from("messages")
-            .select("content, created_at")
-            .eq("conversation_id", convId)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .single();
-            
-          return {
-            id: convId,
-            otherUser: otherUser || { id: otherUserId || "unknown", username: "Unknown User", photo_url: "https://i.pravatar.cc/150" },
-            lastMessage: latestMsg?.content || "No messages yet",
-            time: latestMsg?.created_at ? new Date(latestMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "",
-          };
-        })
-      );
+      const { data: users } = await supabase
+        .from("users")
+        .select("*")
+        .in("id", otherUserIds);
 
-      setConversations(enrichedConversations);
+      const usersMap = new Map<string, any>();
+      users?.forEach((u) => usersMap.set(u.id, u));
+
+      // Step 6: Build the chat list — only include conversations that have messages
+      const chats: any[] = [];
+
+      conversationIds.forEach((convId) => {
+        const otherUserId = convToOtherUserId.get(convId);
+        const otherUser = otherUserId ? usersMap.get(otherUserId) : null;
+        const latestMsg = latestMsgMap.get(convId);
+
+        // Only show conversations that have both an identified other user AND at least one message
+        if (!otherUser || !latestMsg) return;
+
+        const isMyMessage = latestMsg.sender_id === user.id;
+
+        chats.push({
+          id: convId,
+          otherUser,
+          lastMessage: `${isMyMessage ? "You: " : ""}${latestMsg.content}`,
+          time: formatTimestamp(latestMsg.created_at),
+          latestTimestamp: new Date(latestMsg.created_at).getTime(),
+        });
+      });
+
+      // Sort by latest message timestamp — most recent first (Instagram-style)
+      chats.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+
+      setConversations(chats);
     } catch (err) {
-      console.error("Error fetching conversations:", err);
-    } finally {
-      setLoading(false);
+      console.error("fetchConversations error:", err);
     }
+
+    setLoading(false);
+  };
+
+  const formatTimestamp = (dateStr: string) => {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "now";
+    if (diffMins < 60) return `${diffMins}m`;
+    if (diffHours < 24) return `${diffHours}h`;
+    if (diffDays < 7) return `${diffDays}d`;
+
+    return date.toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+    });
   };
 
   useFocusEffect(
     useCallback(() => {
       fetchConversations();
-    }, [user?.id])
+    }, [user?.id]),
   );
+
+  // Subscribe to realtime for instant updates
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel("message-list-updates")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+        },
+        () => {
+          fetchConversations();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   return (
     <SafeAreaView
@@ -122,7 +222,11 @@ const MessageScreen = () => {
         <Text style={styles.headerText}>Messages</Text>
         <TouchableOpacity
           style={styles.newChatIcon}
-          onPress={() => navigation.navigate("Search")}
+          onPress={() =>
+            navigation.navigate("Main", {
+              screen: "Search",
+            })
+          }
         >
           <Ionicons name="create-outline" size={26} color="#fff" />
         </TouchableOpacity>
@@ -130,17 +234,28 @@ const MessageScreen = () => {
 
       <View style={styles.chatContainer}>
         {loading ? (
-          <ActivityIndicator size="large" color={DarkTheme.PRIMARY_BUTTON} style={{ marginTop: 50 }} />
+          <ActivityIndicator
+            size="large"
+            color={DarkTheme.PRIMARY_BUTTON}
+            style={{ marginTop: 50 }}
+          />
         ) : conversations.length === 0 ? (
           <View style={styles.emptyBox}>
             <View style={styles.emptyIconCircle}>
               <Ionicons name="chatbubbles-outline" size={48} color="#555" />
             </View>
             <Text style={styles.emptyTitle}>Your Messages</Text>
-            <Text style={styles.emptyText}>Connect with friends and share moments. Start a conversation today.</Text>
-            <TouchableOpacity 
+            <Text style={styles.emptyText}>
+              Connect with friends and share moments. Start a conversation
+              today.
+            </Text>
+            <TouchableOpacity
               style={styles.findFriendsButton}
-              onPress={() => navigation.navigate("Search")}
+              onPress={() =>
+                navigation.navigate("Main", {
+                  screen: "Search",
+                })
+              }
             >
               <Text style={styles.findFriendsText}>Find Friends</Text>
             </TouchableOpacity>
@@ -156,10 +271,12 @@ const MessageScreen = () => {
                 avatar={item.otherUser.photo_url || "https://i.pravatar.cc/150"}
                 message={item.lastMessage}
                 time={item.time}
-                onPress={() => navigation.navigate("ChatRoom", {
-                  conversationId: item.id,
-                  otherUser: item.otherUser
-                })}
+                onPress={() =>
+                  navigation.navigate("ChatRoom", {
+                    conversationId: item.id,
+                    otherUser: item.otherUser,
+                  })
+                }
               />
             )}
             showsVerticalScrollIndicator={false}
@@ -171,81 +288,3 @@ const MessageScreen = () => {
 };
 
 export default MessageScreen;
-
-const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 16,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  headerText: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-  },
-  backIcon: {
-    position: "absolute",
-    left: 20,
-    padding: 4,
-  },
-  newChatIcon: {
-    position: "absolute",
-    right: 20,
-    padding: 4,
-  },
-  chatContainer: {
-    flex: 1,
-  },
-  emptyBox: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 40,
-    marginTop: -80,
-  },
-  emptyIconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "#161618",
-    borderWidth: 1,
-    borderColor: "#2A2A2C",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  emptyTitle: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "800",
-    marginBottom: 12,
-    letterSpacing: -0.5,
-  },
-  emptyText: {
-    color: "#8E8E93",
-    fontSize: 16,
-    textAlign: "center",
-    lineHeight: 24,
-    marginBottom: 32,
-  },
-  findFriendsButton: {
-    backgroundColor: DarkTheme.PRIMARY_BUTTON,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 24,
-    shadowColor: DarkTheme.PRIMARY_BUTTON,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  findFriendsText: {
-    fontWeight: "700",
-    fontSize: 16,
-    color: "#000",
-  },
-});

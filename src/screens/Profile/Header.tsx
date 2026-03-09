@@ -15,8 +15,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../../lib/supabase";
-import { styles } from "./styles";
 import { DarkTheme } from "../../theme/DarkTheme";
+import { styles } from "./styles";
 
 const blankProfile = require("../../../assets/BlankProfile.png");
 
@@ -29,6 +29,7 @@ const Header = () => {
   const [usernameDraft, setUsernameDraft] = useState("");
   const [uploading, setUploading] = useState(false);
   const [postCount, setPostCount] = useState(0);
+  const [disabled, setDisabled] = useState(false);
 
   const loadProfile = async () => {
     const {
@@ -149,15 +150,15 @@ const Header = () => {
     }
 
     if (newUsername !== profile.username) {
-        const { data: existing } = await supabase
-          .from("users")
-          .select("username")
-          .eq("username", newUsername)
-          .single();
-        if (existing) {
-          Alert.alert("Username already taken");
-          return;
-        }
+      const { data: existing } = await supabase
+        .from("users")
+        .select("username")
+        .eq("username", newUsername)
+        .single();
+      if (existing) {
+        Alert.alert("Username already taken");
+        return;
+      }
     }
 
     const {
@@ -176,15 +177,25 @@ const Header = () => {
       username: newUsername,
       bio: bioDraft,
     }));
-    
+
     setEditingProfile(false);
   };
 
   const handleLogout = async () => {
     Alert.alert("Log Out", "Are you sure you want to log out?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Log Out", style: "destructive", onPress: async () => await supabase.auth.signOut() }
+      {
+        text: "Log Out",
+        style: "destructive",
+        onPress: async () => await supabase.auth.signOut(),
+      },
     ]);
+  };
+
+  const handleDisabled = () => {
+    const isDisabled =
+      usernameDraft === profile.username && bioDraft === profile.bio;
+    if (isDisabled) return true;
   };
 
   if (loading) {
@@ -201,18 +212,20 @@ const Header = () => {
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Top action row */}
       <View style={styles.topBar}>
-          <Text style={styles.topBarTitle}>
-            Social<Text style={{ color: "#fff" }}>Hub</Text>
-          </Text>
-          <TouchableOpacity onPress={handleLogout} style={styles.iconButton}>
-            <Ionicons name="log-out-outline" size={22} color="#EBEBF5" />
-          </TouchableOpacity>
+        <Text style={styles.topBarTitle}>
+          Social<Text style={{ color: "#fff" }}>Hub</Text>
+        </Text>
+        <TouchableOpacity onPress={handleLogout} style={styles.iconButton}>
+          <Ionicons name="log-out-outline" size={22} color="#EBEBF5" />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.header}>
         <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
           <Image
-            source={profile.photo_url ? { uri: profile.photo_url } : blankProfile}
+            source={
+              profile.photo_url ? { uri: profile.photo_url } : blankProfile
+            }
             style={styles.avatar}
           />
           {uploading && (
@@ -226,11 +239,25 @@ const Header = () => {
         <View style={styles.statsContainer}>
           <Stat label="Posts" value={postCount} />
 
-          <TouchableOpacity onPress={() => navigation.push("FollowStats", { userId: profile.id, initialTab: "followers" })}>
+          <TouchableOpacity
+            onPress={() =>
+              navigation.push("FollowStats", {
+                userId: profile.id,
+                initialTab: "followers",
+              })
+            }
+          >
             <Stat label="Followers" value={profile.followers_count} />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => navigation.push("FollowStats", { userId: profile.id, initialTab: "following" })}>
+          <TouchableOpacity
+            onPress={() =>
+              navigation.push("FollowStats", {
+                userId: profile.id,
+                initialTab: "following",
+              })
+            }
+          >
             <Stat label="Following" value={profile.following_count} />
           </TouchableOpacity>
         </View>
@@ -269,26 +296,34 @@ const Header = () => {
               onChangeText={setBioDraft}
             />
 
-            <TouchableOpacity style={styles.saveButton} onPress={handleProfileSave}>
+            <TouchableOpacity
+              style={
+                handleDisabled()
+                  ? { ...styles.saveButton, opacity: 0.5 }
+                  : styles.saveButton
+              }
+              onPress={handleProfileSave}
+              disabled={handleDisabled()}
+            >
               <Text style={styles.saveText}>Save Changes</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setEditingProfile(false)} style={styles.cancelButton}>
+            <TouchableOpacity
+              onPress={() => setEditingProfile(false)}
+              style={styles.cancelButton}
+            >
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-
     </SafeAreaView>
   );
 };
 
 const Stat = ({ label, value }: any) => (
   <View style={styles.statBox}>
-    <Text style={styles.statNumber}>
-      {value}
-    </Text>
+    <Text style={styles.statNumber}>{value}</Text>
     <Text style={styles.statLabel}>{label}</Text>
   </View>
 );

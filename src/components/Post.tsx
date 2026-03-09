@@ -27,7 +27,8 @@ type Props = {
 const Post = ({ post, refreshPosts }: Props) => {
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
-  
+  const [user, setUser] = useState<any>(null);
+
   const isFocused = useIsFocused();
   const navigation = useNavigation<any>();
 
@@ -37,6 +38,16 @@ const Post = ({ post, refreshPosts }: Props) => {
     : blankProfile;
 
   const timeText = useMemo(() => timeAgo(post.created_at), [post.created_at]);
+
+  useEffect(() => {
+    const getUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    getUser();
+  }, []);
 
   useEffect(() => {
     if (isFocused) {
@@ -117,10 +128,14 @@ const Post = ({ post, refreshPosts }: Props) => {
   return (
     <View style={styles.postContainer}>
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.userInfo} 
+        <TouchableOpacity
+          style={styles.userInfo}
           onPress={() => {
-            navigation.push("OtherProfile", { userId: post.user_id });
+            if (post.user_id === user?.id) {
+              navigation.navigate("Profile");
+            } else {
+              navigation.push("OtherProfile", { userId: post.user_id });
+            }
           }}
         >
           <Image source={avatar} style={styles.profileImg} />

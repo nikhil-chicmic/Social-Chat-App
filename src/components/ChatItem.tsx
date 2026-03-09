@@ -2,7 +2,6 @@
 import React from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Props } from "../types";
-import { LinearGradient } from "expo-linear-gradient";
 
 export default function ChatItem({
   username,

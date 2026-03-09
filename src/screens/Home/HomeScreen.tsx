@@ -56,8 +56,9 @@ const HomeScreen = () => {
           setPage(1);
         } else {
           setPosts((prev) => {
-            // Filter out any duplicates just in case new posts were added
-            const newPosts = data.filter((d) => !prev.some((p) => p.id === d.id));
+            const newPosts = data.filter(
+              (d) => !prev.some((p) => p.id === d.id),
+            );
             return [...prev, ...newPosts];
           });
           setPage((prev) => prev + 1);
@@ -121,11 +122,11 @@ const HomeScreen = () => {
             onPress={() => navigation.navigate("Message")}
           >
             <View style={styles.chatIconCircle}>
-                <Ionicons
+              <Ionicons
                 name="chatbubble-ellipses"
                 size={22}
                 color={DarkTheme.PRIMARY_BUTTON}
-                />
+              />
             </View>
           </TouchableOpacity>
         </View>
@@ -169,8 +170,8 @@ export default HomeScreen;
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1, 
-    backgroundColor: DarkTheme.PRIMARY_BACKGROUND
+    flex: 1,
+    backgroundColor: DarkTheme.PRIMARY_BACKGROUND,
   },
   screen: {
     flex: 1,
@@ -197,14 +198,14 @@ const styles = StyleSheet.create({
     // position: "absolute",
     // right: 20,
   },
-  
+
   chatIconCircle: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: "rgba(198, 255, 0, 0.1)",
-      justifyContent: "center",
-      alignItems: "center",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(198, 255, 0, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   storySection: {
