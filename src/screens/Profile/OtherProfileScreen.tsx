@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   useFocusEffect,
   useNavigation,
@@ -36,15 +37,15 @@ const OtherProfileScreen = () => {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-
     if (!user?.id) return;
+
+    const CONV_CACHE_KEY = "chat_conversation_cache";
+    let conversationId: string | null = null;
 
     const { data: myConvs } = await supabase
       .from("conversation_participants")
       .select("conversation_id")
       .eq("user_id", user.id);
-
-    let existingConvId: string | null = null;
 
     if (myConvs && myConvs.length > 0) {
       const convIds = myConvs.map((c) => c.conversation_id);
@@ -56,36 +57,69 @@ const OtherProfileScreen = () => {
         .in("conversation_id", convIds);
 
       if (theirConvs && theirConvs.length > 0) {
-        existingConvId = theirConvs[0].conversation_id;
+        conversationId = theirConvs[0].conversation_id;
+      }
+
+      if (!conversationId) {
+        const { data: theirMessages } = await supabase
+          .from("messages")
+          .select("conversation_id")
+          .eq("sender_id", targetUser.id)
+          .in("conversation_id", convIds)
+          .limit(1);
+
+        if (theirMessages && theirMessages.length > 0) {
+          conversationId = theirMessages[0].conversation_id;
+        }
+      }
+
+      if (!conversationId) {
+        try {
+          const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
+          const cache: Record<string, string> = raw ? JSON.parse(raw) : {};
+          for (const [cachedConvId, cachedUserId] of Object.entries(cache)) {
+            if (
+              cachedUserId === targetUser.id &&
+              convIds.includes(cachedConvId)
+            ) {
+              conversationId = cachedConvId;
+              break;
+            }
+          }
+        } catch {}
       }
     }
+    if (!conversationId) {
+      const { data: newConv, error } = await supabase
+        .from("conversations")
+        .insert({})
+        .select()
+        .single();
 
-    if (existingConvId) {
-      navigation.navigate("ChatRoom", {
-        conversationId: existingConvId,
-        otherUser: targetUser,
-      });
-      return;
+      if (error || !newConv) {
+        console.error("Create conversation error:", error);
+        return;
+      }
+
+      conversationId = newConv.id;
+
+      await supabase.from("conversation_participants").insert([
+        { conversation_id: newConv.id, user_id: user.id },
+        { conversation_id: newConv.id, user_id: targetUser.id },
+      ]);
     }
 
-    const { data: newConv, error } = await supabase
-      .from("conversations")
-      .insert({})
-      .select()
-      .single();
-
-    if (error || !newConv) {
-      console.error(error);
-      return;
+    if (conversationId) {
+      try {
+        const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
+        const cache: Record<string, string> = raw ? JSON.parse(raw) : {};
+        cache[conversationId] = targetUser.id;
+        await AsyncStorage.setItem(CONV_CACHE_KEY, JSON.stringify(cache));
+      } catch {}
     }
-
-    await supabase.from("conversation_participants").insert([
-      { conversation_id: newConv.id, user_id: user.id },
-      { conversation_id: newConv.id, user_id: targetUser.id },
-    ]);
 
     navigation.navigate("ChatRoom", {
-      conversationId: newConv.id,
+      conversationId,
       otherUser: targetUser,
     });
   };

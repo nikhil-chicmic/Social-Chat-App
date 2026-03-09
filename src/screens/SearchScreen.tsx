@@ -3,15 +3,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    DeviceEventEmitter,
-    FlatList,
-    Image,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  DeviceEventEmitter,
+  FlatList,
+  Image,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
@@ -99,7 +99,6 @@ const SearchScreen = () => {
     const CONV_CACHE_KEY = "chat_conversation_cache";
     let conversationId: string | null = null;
 
-    // Get all conversations the current user participates in
     const { data: myConvs } = await supabase
       .from("conversation_participants")
       .select("conversation_id")
@@ -108,7 +107,6 @@ const SearchScreen = () => {
     if (myConvs && myConvs.length > 0) {
       const convIds = myConvs.map((c) => c.conversation_id);
 
-      // Strategy 1: Check conversation_participants for target user (may fail due to RLS)
       const { data: theirConvs } = await supabase
         .from("conversation_participants")
         .select("conversation_id")
@@ -119,7 +117,6 @@ const SearchScreen = () => {
         conversationId = theirConvs[0].conversation_id;
       }
 
-      // Strategy 2: Check messages table — find conversations where target user sent messages
       if (!conversationId) {
         const { data: theirMessages } = await supabase
           .from("messages")
@@ -133,14 +130,15 @@ const SearchScreen = () => {
         }
       }
 
-      // Strategy 3: Check local AsyncStorage cache
       if (!conversationId) {
         try {
           const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
           const cache: Record<string, string> = raw ? JSON.parse(raw) : {};
-          // Cache maps conversationId -> otherUserId. Find reverse.
           for (const [cachedConvId, cachedUserId] of Object.entries(cache)) {
-            if (cachedUserId === targetUser.id && convIds.includes(cachedConvId)) {
+            if (
+              cachedUserId === targetUser.id &&
+              convIds.includes(cachedConvId)
+            ) {
               conversationId = cachedConvId;
               break;
             }
@@ -148,8 +146,6 @@ const SearchScreen = () => {
         } catch {}
       }
     }
-
-    // No existing conversation found — create a new one
     if (!conversationId) {
       const { data: newConv, error } = await supabase
         .from("conversations")
@@ -170,7 +166,6 @@ const SearchScreen = () => {
       ]);
     }
 
-    // Always cache the conversation → user mapping
     if (conversationId) {
       try {
         const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
