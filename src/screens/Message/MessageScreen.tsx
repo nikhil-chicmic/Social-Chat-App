@@ -187,44 +187,27 @@ const MessageScreen = () => {
   };
 
   const handleDeleteChat = async (conversationId: string) => {
-    try {
-      if (!user?.id) return;
+    if (!user?.id) return;
 
-      // Optimistically remove from state so UI updates instantly
-      setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
 
-      // Attempt to delete from both sides
-      await supabase.from("messages").delete().eq("conversation_id", conversationId);
-      
-      const { error: partErr } = await supabase
-        .from("conversation_participants")
-        .delete()
-        .eq("conversation_id", conversationId);
+    const { error } = await supabase
+      .from("conversations")
+      .delete()
+      .eq("id", conversationId);
 
-      // If backend restricts wiping the other participant's record, fallback to wiping our own side explicitly.
-      if (partErr) {
-        await supabase
-          .from("conversation_participants")
-          .delete()
-          .eq("conversation_id", conversationId)
-          .eq("user_id", user.id);
-      }
-
-      await supabase.from("conversations").delete().eq("id", conversationId);
-
-      // Clear from local storage cache
-      try {
-        const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
-        if (raw) {
-          const cache = JSON.parse(raw);
-          delete cache[conversationId];
-          await AsyncStorage.setItem(CONV_CACHE_KEY, JSON.stringify(cache));
-        }
-      } catch (err) {}
-      
-    } catch (err) {
-      console.error("Delete chat exception:", err);
+    if (error) {
+      console.error("Delete chat error:", error);
+      return;
     }
+
+    const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
+    if (!raw) return;
+
+    const cache = JSON.parse(raw);
+    delete cache[conversationId];
+
+    await AsyncStorage.setItem(CONV_CACHE_KEY, JSON.stringify(cache));
   };
 
   useFocusEffect(
