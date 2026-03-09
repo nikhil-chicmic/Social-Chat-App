@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -15,16 +16,20 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../../lib/supabase";
 import { styles } from "./styles";
+import { DarkTheme } from "../../theme/DarkTheme";
+
 const blankProfile = require("../../../assets/BlankProfile.png");
+
 const Header = () => {
   const [profile, setProfile] = useState<any>(null);
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
-  const [editingBio, setEditingBio] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [bioDraft, setBioDraft] = useState("");
-  const [editingUsername, setEditingUsername] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState("");
   const [uploading, setUploading] = useState(false);
   const [postCount, setPostCount] = useState(0);
+
   const loadProfile = async () => {
     const {
       data: { user },
@@ -58,9 +63,11 @@ const Header = () => {
         following_count: followingCount ?? 0,
       });
       setBioDraft(data.bio ?? "");
+      setUsernameDraft(data.username ?? "");
     }
     setLoading(false);
   };
+
   useEffect(() => {
     loadProfile();
     const sub = DeviceEventEmitter.addListener("followChanged", () => {
@@ -68,6 +75,13 @@ const Header = () => {
     });
     return () => sub.remove();
   }, []);
+
+  const openEditModal = () => {
+    setBioDraft(profile?.bio ?? "");
+    setUsernameDraft(profile?.username ?? "");
+    setEditingProfile(true);
+  };
+
   const pickImage = useCallback(async () => {
     const {
       data: { user },
@@ -81,6 +95,8 @@ const Header = () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.7,
+      allowsEditing: true,
+      aspect: [1, 1],
     });
     if (result.canceled) return;
     try {
@@ -113,123 +129,138 @@ const Header = () => {
       setUploading(false);
     }
   }, []);
-  const handleBioSave = async () => {
-    if (bioDraft.split("\n").length > 4) {
-      Alert.alert("Max 4 lines allowed");
-      return;
-    }
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-    await supabase.from("users").update({ bio: bioDraft }).eq("id", user.id);
-    setProfile((prev: any) => ({
-      ...prev,
-      bio: bioDraft,
-    }));
-    setEditingBio(false);
-  };
-  const handleUsernameSave = async () => {
+
+  const handleProfileSave = async () => {
     if (!profile) return;
+
     if (usernameDraft.includes(" ")) {
       Alert.alert("Username cannot contain spaces");
       return;
     }
     const newUsername = usernameDraft.trim().toLowerCase();
     if (newUsername.length < 4) {
-      Alert.alert("Minimum 4 characters required");
+      Alert.alert("Username: Minimum 4 characters required");
       return;
     }
-    const { data: existing } = await supabase
-      .from("users")
-      .select("username")
-      .eq("username", newUsername)
-      .single();
-    if (existing) {
-      Alert.alert("Username already taken");
+
+    if (bioDraft.split("\n").length > 4) {
+      Alert.alert("Bio: Max 4 lines allowed");
       return;
     }
+
+    if (newUsername !== profile.username) {
+        const { data: existing } = await supabase
+          .from("users")
+          .select("username")
+          .eq("username", newUsername)
+          .single();
+        if (existing) {
+          Alert.alert("Username already taken");
+          return;
+        }
+    }
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
+    if (!user) return;
+
     await supabase
       .from("users")
-      .update({ username: newUsername })
-      .eq("id", user?.id);
+      .update({ username: newUsername, bio: bioDraft })
+      .eq("id", user.id);
+
     setProfile((prev: any) => ({
       ...prev,
       username: newUsername,
+      bio: bioDraft,
     }));
-    setEditingUsername(false);
-    setUsernameDraft("");
+    
+    setEditingProfile(false);
   };
+
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    Alert.alert("Log Out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Log Out", style: "destructive", onPress: async () => await supabase.auth.signOut() }
+    ]);
   };
+
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#fff" />
+        <ActivityIndicator size="large" color={DarkTheme.PRIMARY_BUTTON} />
       </View>
     );
   }
+
   if (!profile) return null;
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      {/* Top action row */}
+      <View style={styles.topBar}>
+          <Text style={styles.topBarTitle}>
+            Social<Text style={{ color: "#fff" }}>Hub</Text>
+          </Text>
+          <TouchableOpacity onPress={handleLogout} style={styles.iconButton}>
+            <Ionicons name="log-out-outline" size={22} color="#EBEBF5" />
+          </TouchableOpacity>
+      </View>
+
       <View style={styles.header}>
-        <TouchableOpacity onPress={pickImage}>
+        <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
           <Image
-            source={
-              profile.photo_url ? { uri: profile.photo_url } : blankProfile
-            }
+            source={profile.photo_url ? { uri: profile.photo_url } : blankProfile}
             style={styles.avatar}
           />
+          {uploading && (
+            <ActivityIndicator
+              style={styles.uploadingIndicator}
+              color={DarkTheme.PRIMARY_BUTTON}
+            />
+          )}
         </TouchableOpacity>
-
-        {uploading && (
-          <ActivityIndicator
-            style={{ position: "absolute", top: 45, left: 45 }}
-            color="#fff"
-          />
-        )}
 
         <View style={styles.statsContainer}>
           <Stat label="Posts" value={postCount} />
-          <Stat label="Followers" value={profile.followers_count} />
-          <Stat label="Following" value={profile.following_count} />
+
+          <TouchableOpacity onPress={() => navigation.push("FollowStats", { userId: profile.id, initialTab: "followers" })}>
+            <Stat label="Followers" value={profile.followers_count} />
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => navigation.push("FollowStats", { userId: profile.id, initialTab: "following" })}>
+            <Stat label="Following" value={profile.following_count} />
+          </TouchableOpacity>
         </View>
       </View>
 
-      <View style={styles.usernameRow}>
+      <View style={styles.userInfoSection}>
         <Text style={styles.username}>@{profile.username}</Text>
-        <TouchableOpacity
-          style={styles.editIcon}
-          onPress={() => setEditingUsername(true)}
-        >
-          <Ionicons name="pencil-outline" size={18} color="#fff" />
-        </TouchableOpacity>
+        <Text style={styles.bio}>{profile.bio || "No bio yet."}</Text>
       </View>
-
-      <Text style={styles.bio}>{profile.bio || "No bio yet."}</Text>
 
       <View style={styles.buttonRow}>
-        <TouchableOpacity
-          style={styles.editButton}
-          onPress={() => setEditingBio(true)}
-        >
-          <Text style={styles.editText}>Edit Bio</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
+        <TouchableOpacity style={styles.editButton} onPress={openEditModal}>
+          <Text style={styles.editText}>Edit Profile</Text>
         </TouchableOpacity>
       </View>
 
-      <Modal visible={editingBio} animationType="slide" transparent>
+      <Modal visible={editingProfile} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Edit Bio</Text>
+            <Text style={styles.modalTitle}>Edit Profile</Text>
 
+            <Text style={styles.inputLabel}>Username</Text>
+            <TextInput
+              style={styles.inputUsername}
+              autoCapitalize="none"
+              value={usernameDraft}
+              onChangeText={setUsernameDraft}
+            />
+
+            <Text style={styles.inputLabel}>Bio</Text>
             <TextInput
               style={styles.input}
               multiline
@@ -238,51 +269,28 @@ const Header = () => {
               onChangeText={setBioDraft}
             />
 
-            <TouchableOpacity style={styles.saveButton} onPress={handleBioSave}>
-              <Text style={styles.saveText}>Save</Text>
+            <TouchableOpacity style={styles.saveButton} onPress={handleProfileSave}>
+              <Text style={styles.saveText}>Save Changes</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setEditingBio(false)}>
-              <Text style={{ color: "#aaa", marginTop: 15 }}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={editingUsername} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Change Username</Text>
-
-            <TextInput
-              style={styles.inputUsername}
-              autoCapitalize="none"
-              value={usernameDraft}
-              onChangeText={setUsernameDraft}
-            />
-
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleUsernameSave}
-            >
-              <Text style={styles.saveText}>Save</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => setEditingUsername(false)}>
-              <Text style={{ color: "#aaa", marginTop: 15 }}>Cancel</Text>
+            <TouchableOpacity onPress={() => setEditingProfile(false)} style={styles.cancelButton}>
+              <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
     </SafeAreaView>
   );
 };
+
 const Stat = ({ label, value }: any) => (
-  <View style={{ alignItems: "center" }}>
-    <Text style={{ color: "#fff", fontSize: 18, fontWeight: "600" }}>
+  <View style={styles.statBox}>
+    <Text style={styles.statNumber}>
       {value}
     </Text>
-    <Text style={{ color: "#aaa", fontSize: 12 }}>{label}</Text>
+    <Text style={styles.statLabel}>{label}</Text>
   </View>
 );
+
 export default Header;

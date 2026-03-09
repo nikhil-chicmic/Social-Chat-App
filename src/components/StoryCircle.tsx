@@ -19,24 +19,26 @@ export default StoryCircle;
 const styles = StyleSheet.create({
     container: {
         alignItems: "center",
-        marginRight: 12,
+        marginRight: 16,
     },
     storyRing: {
         padding: 3,
         borderRadius: 40,
         borderWidth: 2,
-        borderColor: "#ff8501",
+        borderColor: "#C6FF00", // DarkTheme.PRIMARY_BUTTON
     },
     avatar: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
+        width: 68,
+        height: 68,
+        borderRadius: 34,
+        backgroundColor: "#2A2A2C",
     },
     username: {
-        color: "#fff",
-        fontSize: 12,
-        marginTop: 4,
-        width: 70,
+        color: "#EBEBF5",
+        fontSize: 13,
+        fontWeight: "500",
+        marginTop: 6,
+        width: 74,
         textAlign: "center",
     },
 });

@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { DeviceEventEmitter, Text, TouchableOpacity } from "react-native";
 import { supabase } from "../../../lib/supabase";
+import { DarkTheme } from "../../theme/DarkTheme";
 type Props = {
   targetUserId: string;
+  fullWidth?: boolean;
 };
-const FollowButton = ({ targetUserId }: Props) => {
+const FollowButton = ({ targetUserId, fullWidth }: Props) => {
   const [following, setFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -61,11 +63,30 @@ const FollowButton = ({ targetUserId }: Props) => {
 
   if (loading) return null;
   return (
-    <TouchableOpacity onPress={toggleFollow}>
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={toggleFollow}
+      style={[{
+        backgroundColor: following ? "#2A2A2C" : DarkTheme.PRIMARY_BUTTON,
+        alignItems: "center",
+        justifyContent: "center",
+      }, fullWidth ? {
+        width: "100%",
+        paddingVertical: 10,
+        borderRadius: 12,
+      } : {
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        minWidth: 100,
+        height: 36,
+      }]}
+    >
       <Text
         style={{
-          color: following ? "#aaa" : "#0095f6",
-          fontWeight: "600",
+          color: following ? "#EBEBF5" : "#000",
+          fontWeight: "700",
+          fontSize: fullWidth ? 15 : 14,
         }}
       >
         {following ? "Following" : "Follow"}

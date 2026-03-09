@@ -48,17 +48,18 @@ const HomeScreen = () => {
         `,
         )
         .order("created_at", { ascending: false })
-        .limit(100);
+        .range(from, to);
 
       if (data) {
-        const shuffled = [...data].sort(() => Math.random() - 0.5);
-        const paginated = shuffled.slice(from, to + 1);
-
         if (reset) {
-          setPosts(paginated);
+          setPosts(data);
           setPage(1);
         } else {
-          setPosts((prev) => [...prev, ...paginated]);
+          setPosts((prev) => {
+            // Filter out any duplicates just in case new posts were added
+            const newPosts = data.filter((d) => !prev.some((p) => p.id === d.id));
+            return [...prev, ...newPosts];
+          });
           setPage((prev) => prev + 1);
         }
       }
@@ -108,7 +109,7 @@ const HomeScreen = () => {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }} edges={["top"]}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.screen}>
         <View style={styles.header}>
           <Text style={styles.appText}>
@@ -119,11 +120,13 @@ const HomeScreen = () => {
             style={styles.chatIcon}
             onPress={() => navigation.navigate("Message")}
           >
-            <Ionicons
-              name="chatbubble-ellipses-outline"
-              size={30}
-              color="white"
-            />
+            <View style={styles.chatIconCircle}>
+                <Ionicons
+                name="chatbubble-ellipses"
+                size={22}
+                color={DarkTheme.PRIMARY_BUTTON}
+                />
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -146,12 +149,13 @@ const HomeScreen = () => {
           showsVerticalScrollIndicator={false}
           onEndReached={() => fetchPosts()}
           onEndReachedThreshold={0.5}
+          contentContainerStyle={{ paddingBottom: 20 }}
           ListFooterComponent={
             loading ? (
               <ActivityIndicator
                 size="large"
-                color="#fff"
-                style={{ marginVertical: 20 }}
+                color={DarkTheme.PRIMARY_BUTTON}
+                style={{ marginVertical: 30 }}
               />
             ) : null
           }
@@ -164,32 +168,48 @@ const HomeScreen = () => {
 export default HomeScreen;
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1, 
+    backgroundColor: DarkTheme.PRIMARY_BACKGROUND
+  },
   screen: {
     flex: 1,
     width: "100%",
   },
 
   header: {
-    marginTop: 5,
+    marginTop: 10,
+    marginBottom: 5,
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: 20,
   },
 
   appText: {
     color: DarkTheme.PRIMARY_BUTTON,
-    fontSize: 30,
+    fontSize: 32,
     fontWeight: "900",
+    letterSpacing: -1,
   },
 
   chatIcon: {
-    position: "absolute",
-    right: 20,
+    // position: "absolute",
+    // right: 20,
+  },
+  
+  chatIconCircle: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: "rgba(198, 255, 0, 0.1)",
+      justifyContent: "center",
+      alignItems: "center",
   },
 
   storySection: {
-    marginHorizontal: 16,
+    paddingLeft: 20,
     marginTop: 10,
-    marginBottom: 10,
+    marginBottom: 16,
   },
 });

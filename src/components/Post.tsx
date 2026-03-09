@@ -5,6 +5,8 @@ import { supabase } from "../../lib/supabase";
 
 const blankProfile = require("../../assets/BlankProfile.png");
 
+import { useIsFocused, useNavigation } from "@react-navigation/native";
+
 const timeAgo = (dateString: string) => {
   const diff = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
   const m = 60,
@@ -25,6 +27,9 @@ type Props = {
 const Post = ({ post, refreshPosts }: Props) => {
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
+  
+  const isFocused = useIsFocused();
+  const navigation = useNavigation<any>();
 
   const username = post?.users?.username ?? "user";
   const avatar = post?.users?.photo_url
@@ -34,9 +39,11 @@ const Post = ({ post, refreshPosts }: Props) => {
   const timeText = useMemo(() => timeAgo(post.created_at), [post.created_at]);
 
   useEffect(() => {
-    checkLikeStatus();
-    loadLikesCount();
-  }, []);
+    if (isFocused) {
+      checkLikeStatus();
+      loadLikesCount();
+    }
+  }, [isFocused, post.id]);
 
   const loadLikesCount = async () => {
     const { count } = await supabase
@@ -110,10 +117,15 @@ const Post = ({ post, refreshPosts }: Props) => {
   return (
     <View style={styles.postContainer}>
       <View style={styles.header}>
-        <View style={styles.userInfo}>
+        <TouchableOpacity 
+          style={styles.userInfo} 
+          onPress={() => {
+            navigation.push("OtherProfile", { userId: post.user_id });
+          }}
+        >
           <Image source={avatar} style={styles.profileImg} />
           <Text style={styles.username}>{username}</Text>
-        </View>
+        </TouchableOpacity>
 
         <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
       </View>
@@ -166,14 +178,20 @@ export default Post;
 
 const styles = StyleSheet.create({
   postContainer: {
-    marginBottom: 20,
+    marginBottom: 24,
+    backgroundColor: "#161618",
+    borderRadius: 24,
+    marginHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "#2A2A2C",
+    overflow: "hidden",
   },
 
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 12,
+    padding: 14,
   },
 
   userInfo: {
@@ -182,15 +200,17 @@ const styles = StyleSheet.create({
   },
 
   profileImg: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     marginRight: 10,
+    backgroundColor: "#2A2A2C",
   },
 
   username: {
     color: "#fff",
-    fontWeight: "600",
+    fontWeight: "700",
+    fontSize: 15,
   },
 
   postImage: {
@@ -201,31 +221,38 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
   },
 
   leftActions: {
     flexDirection: "row",
-    gap: 16,
+    gap: 20,
+    alignItems: "center",
   },
 
   likesText: {
     color: "#fff",
-    fontWeight: "600",
-    paddingHorizontal: 12,
+    fontWeight: "700",
+    paddingHorizontal: 16,
+    marginBottom: 6,
+    fontSize: 14,
   },
 
   caption: {
-    color: "#fff",
-    paddingHorizontal: 12,
-    marginTop: 4,
+    color: "#EBEBF5",
+    paddingHorizontal: 16,
+    lineHeight: 20,
+    fontSize: 14,
   },
 
   timeText: {
-    color: "gray",
+    color: "#8E8E93",
     fontSize: 12,
-    paddingHorizontal: 12,
-    marginTop: 4,
+    fontWeight: "500",
+    paddingHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 16,
+    textTransform: "uppercase",
   },
 });

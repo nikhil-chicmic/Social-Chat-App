@@ -57,32 +57,35 @@ export default YourStory;
 const styles = StyleSheet.create({
     container: {
         alignItems: "center",
-        marginRight: 15,
+        marginRight: 16,
     },
     imageWrapper: {
         position: "relative",
+        padding: 4, // Space for a border if we wanted one, just keeps sizing consistent
     },
     profileImg: {
-        width: 70,
-        height: 70,
-        borderRadius: 50,
+        width: 68,
+        height: 68,
+        borderRadius: 34,
+        backgroundColor: "#2A2A2C",
     },
     plusContainer: {
         position: "absolute",
-        bottom: 0,
-        right: 0,
-        width: 22,
-        height: 22,
-        borderRadius: 11,
-        backgroundColor: "#0095F6",
+        bottom: 4,
+        right: -2,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: "#C6FF00", // DarkTheme.PRIMARY_BUTTON
         justifyContent: "center",
         alignItems: "center",
-        borderWidth: 2,
+        borderWidth: 3,
         borderColor: "#000",
     },
     label: {
         marginTop: 6,
-        fontSize: 12,
+        fontSize: 13,
+        fontWeight: "600",
         color: "#fff",
     },
 });
