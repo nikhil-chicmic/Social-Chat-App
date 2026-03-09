@@ -5,13 +5,13 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -26,7 +26,10 @@ const UploadScreen = () => {
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Permission required", "We need access to your gallery to upload photos.");
+      Alert.alert(
+        "Permission required",
+        "We need access to your gallery to upload photos.",
+      );
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -86,11 +89,14 @@ const UploadScreen = () => {
       edges={["top"]}
       style={{ flex: 1, backgroundColor: DarkTheme.PRIMARY_BACKGROUND }}
     >
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.container}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.header}>
             <Text style={styles.title}>New Post</Text>
           </View>
@@ -105,16 +111,29 @@ const UploadScreen = () => {
             ) : (
               <View style={styles.placeholder}>
                 <View style={styles.iconCircle}>
-                  <Ionicons name="camera-outline" size={36} color={DarkTheme.PRIMARY_BUTTON} />
+                  <Ionicons
+                    name="camera-outline"
+                    size={36}
+                    color={DarkTheme.PRIMARY_BUTTON}
+                  />
                 </View>
                 <Text style={styles.placeholderTitle}>Add Photo</Text>
-                <Text style={styles.placeholderText}>Choose an image from your gallery</Text>
+                <Text style={styles.placeholderText}>
+                  Choose an image from your gallery
+                </Text>
               </View>
             )}
-            
+
             {image && (
-              <TouchableOpacity style={styles.closeButton} onPress={() => setImage(null)}>
-                <Ionicons name="close-circle" size={28} color="rgba(255,255,255,0.8)" />
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setImage(null)}
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={28}
+                  color="rgba(255,255,255,0.8)"
+                />
               </TouchableOpacity>
             )}
           </TouchableOpacity>
@@ -125,7 +144,8 @@ const UploadScreen = () => {
             placeholder="Write something beautiful..."
             placeholderTextColor="#666"
             multiline
-            maxLength={300}
+            numberOfLines={4}
+            maxLength={800}
             value={caption}
             onChangeText={setCaption}
           />
@@ -234,7 +254,7 @@ const styles = StyleSheet.create({
     padding: 16,
     color: "#fff",
     fontSize: 16,
-    minHeight: 120,
+    minHeight: 100,
     textAlignVertical: "top",
   },
   uploadButton: {

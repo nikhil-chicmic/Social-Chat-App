@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   FlatList,
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -16,6 +15,7 @@ import OurStory from "../../components/OurStory";
 import Post from "../../components/Post";
 import StoryCircle from "../../components/StoryCircle";
 import { DarkTheme } from "../../theme/DarkTheme";
+import { styles } from "./styles";
 
 const PAGE_SIZE = 15;
 
@@ -167,50 +167,3 @@ const HomeScreen = () => {
 };
 
 export default HomeScreen;
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: DarkTheme.PRIMARY_BACKGROUND,
-  },
-  screen: {
-    flex: 1,
-    width: "100%",
-  },
-
-  header: {
-    marginTop: 10,
-    marginBottom: 5,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-
-  appText: {
-    color: DarkTheme.PRIMARY_BUTTON,
-    fontSize: 32,
-    fontWeight: "900",
-    letterSpacing: -1,
-  },
-
-  chatIcon: {
-    // position: "absolute",
-    // right: 20,
-  },
-
-  chatIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(198, 255, 0, 0.1)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  storySection: {
-    paddingLeft: 20,
-    marginTop: 10,
-    marginBottom: 16,
-  },
-});

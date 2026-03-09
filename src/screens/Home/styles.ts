@@ -1,29 +1,11 @@
 import { StyleSheet } from "react-native";
 import { DarkTheme } from "../../theme/DarkTheme";
 export const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: DarkTheme.PRIMARY_BACKGROUND,
-        justifyContent: "center",
-        padding: 20,
-    },
     logoContainer: {
         paddingTop: 50,
         flex: 1,
         alignItems: "center",
         justifyContent: "center",
-    },
-    header: {
-        flexDirection: "row",
-        justifyContent: "center",
-        alignItems: "center",
-        marginTop: -100,
-        marginBottom: 50,
-    },
-    appText: {
-        color: DarkTheme.PRIMARY_BUTTON,
-        fontSize: 40,
-        fontWeight: 900,
     },
     logo: {
         height: 50,
@@ -113,4 +95,48 @@ export const styles = StyleSheet.create({
         color: "tomato",
         fontWeight: "600",
     },
+    container: {
+    flex: 1,
+    backgroundColor: DarkTheme.PRIMARY_BACKGROUND,
+  },
+  screen: {
+    flex: 1,
+    width: "100%",
+  },
+
+  header: {
+    marginTop: 10,
+    marginBottom: 5,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+
+  appText: {
+    color: DarkTheme.PRIMARY_BUTTON,
+    fontSize: 32,
+    fontWeight: "900",
+    letterSpacing: -1,
+  },
+
+  chatIcon: {
+    // position: "absolute",
+    // right: 20,
+  },
+
+  chatIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(198, 255, 0, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  storySection: {
+    paddingLeft: 20,
+    marginTop: 10,
+    marginBottom: 16,
+  },
 });

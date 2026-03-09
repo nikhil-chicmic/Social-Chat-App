@@ -29,6 +29,7 @@ const Post = ({ post, refreshPosts }: Props) => {
   const [likesCount, setLikesCount] = useState(0);
   const [saved, setSaved] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const isFocused = useIsFocused();
   const navigation = useNavigation<any>();
@@ -227,12 +228,24 @@ const Post = ({ post, refreshPosts }: Props) => {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.likesText}>{likesCount.toLocaleString()} likes</Text>
+      <Text style={styles.likesText}>
+        {likesCount.toLocaleString()} {likesCount <= 1 ? "like" : "likes"}
+      </Text>
 
       {post.caption ? (
         <Text style={styles.caption}>
           <Text style={styles.username}>{username} </Text>
-          {post.caption}
+
+          {expanded || post.caption.length <= 100 ? (
+            post.caption
+          ) : (
+            <>
+              {post.caption.slice(0, 100)}
+              <TouchableOpacity onPress={() => setExpanded(true)}>
+                <Text style={{ color: "#999" }}>...more</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </Text>
       ) : null}
 
