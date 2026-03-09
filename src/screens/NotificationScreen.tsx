@@ -14,6 +14,18 @@ import { supabase } from "../../lib/supabase";
 import { DarkTheme } from "../theme/DarkTheme";
 const blankProfile = require("../../assets/BlankProfile.png");
 
+const timeAgo = (date: string) => {
+  const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+  const m = 60;
+  const h = 3600;
+  const d = 86400;
+
+  if (seconds < m) return "Just now";
+  if (seconds < h) return `${Math.floor(seconds / m)}m ago`;
+  if (seconds < d) return `${Math.floor(seconds / h)}h ago`;
+  return `${Math.floor(seconds / d)}d ago`;
+};
+
 const NotificationScreen = () => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +87,7 @@ const NotificationScreen = () => {
             {item.type === "follow"
               ? "started following you. "
               : "liked your post. "}
-            <Text style={styles.timeText}>Just now</Text>
+            <Text style={styles.timeText}>{timeAgo(item.created_at)}</Text>
           </Text>
         </View>
 
