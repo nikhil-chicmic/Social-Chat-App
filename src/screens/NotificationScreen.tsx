@@ -110,7 +110,7 @@ const NotificationScreen = () => {
           <View style={styles.emptyIconCircle}>
             <Ionicons name="notifications-off-outline" size={48} color="#555" />
           </View>
-          <Text style={styles.emptyTitle}>Nothing here yet</Text>
+          <Text style={styles.emptyTitle}>No notifications yet</Text>
           <Text style={styles.emptyText}>
             When someone likes your posts or follows you, you'll see it here.
           </Text>

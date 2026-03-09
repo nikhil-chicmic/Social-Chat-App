@@ -31,10 +31,12 @@ const PostScreen = ({ route, navigation }: any) => {
   const [profile, setProfile] = useState<any>(post?.users ?? null);
   const [loading, setLoading] = useState(!post?.users);
   const [liked, setLiked] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
 
   useEffect(() => {
     checkLikeStatus();
+    checkSaveStatus();
     loadLikesCount();
   }, []);
 
@@ -53,6 +55,23 @@ const PostScreen = ({ route, navigation }: any) => {
       .maybeSingle();
 
     setLiked(!!data);
+  };
+
+  const checkSaveStatus = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("saved_posts")
+      .select("id")
+      .eq("post_id", post.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    setSaved(!!data);
   };
 
   const loadLikesCount = async () => {
@@ -100,6 +119,35 @@ const PostScreen = ({ route, navigation }: any) => {
             type: "like",
           });
         }
+      }
+    }
+  };
+
+  const toggleSave = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    if (saved) {
+      const { error } = await supabase
+        .from("saved_posts")
+        .delete()
+        .eq("post_id", post.id)
+        .eq("user_id", user.id);
+
+      if (!error) {
+        setSaved(false);
+      }
+    } else {
+      const { error } = await supabase.from("saved_posts").insert({
+        user_id: user.id,
+        post_id: post.id,
+      });
+
+      if (!error) {
+        setSaved(true);
       }
     }
   };
@@ -187,8 +235,12 @@ const PostScreen = ({ route, navigation }: any) => {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity>
-          <Ionicons name="bookmark-outline" size={24} color="#fff" />
+        <TouchableOpacity onPress={toggleSave}>
+          <Ionicons
+            name={saved ? "bookmark" : "bookmark-outline"}
+            size={24}
+            color="#fff"
+          />
         </TouchableOpacity>
       </View>
 

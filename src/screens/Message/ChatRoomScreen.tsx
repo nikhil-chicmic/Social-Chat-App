@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useContext, useEffect, useRef, useState } from "react";
 import {
@@ -34,6 +35,7 @@ export default function ChatRoomScreen() {
   useEffect(() => {
     if (conversationId) {
       loadMessages();
+      updateReadReceipt();
       const channel = subscribeRealtime();
 
       return () => {
@@ -41,6 +43,17 @@ export default function ChatRoomScreen() {
       };
     }
   }, [conversationId]);
+
+  const updateReadReceipt = async () => {
+    try {
+      const raw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
+      const cache = raw ? JSON.parse(raw) : {};
+      cache[conversationId] = Date.now();
+      await AsyncStorage.setItem("READ_RECEIPTS_CACHE", JSON.stringify(cache));
+    } catch (err) {
+      console.error("Failed to update read receipt:", err);
+    }
+  };
 
   async function loadMessages() {
     setLoadingMessages(true);
@@ -86,6 +99,8 @@ export default function ChatRoomScreen() {
             if (prev.some((m) => m.id === payload.new.id)) return prev;
             return [...prev, payload.new];
           });
+
+          updateReadReceipt();
 
           setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
@@ -170,7 +185,12 @@ export default function ChatRoomScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.header}
+          onPress={() => {
+            navigation.push("OtherProfile", { userId: otherUser?.id });
+          }}
+        >
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
@@ -183,7 +203,7 @@ export default function ChatRoomScreen() {
           />
 
           <Text style={styles.headerName}>{otherUser?.username || "User"}</Text>
-        </View>
+        </TouchableOpacity>
 
         {loadingMessages ? (
           <View

@@ -3,11 +3,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useContext, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../../lib/supabase";
@@ -24,7 +25,6 @@ const MessageScreen = () => {
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load the local conversation cache (conversation_id -> otherUserId)
   const loadConvCache = async (): Promise<Record<string, string>> => {
     try {
       const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
@@ -40,7 +40,6 @@ const MessageScreen = () => {
     setLoading(true);
 
     try {
-      // Step 1: Get all conversation IDs the current user participates in
       const { data: myParticipations, error: partError } = await supabase
         .from("conversation_participants")
         .select("conversation_id")
@@ -56,33 +55,26 @@ const MessageScreen = () => {
         return;
       }
 
-      const conversationIds = myParticipations.map(
-        (p) => p.conversation_id
-      );
+      const conversationIds = myParticipations.map((p) => p.conversation_id);
 
-      // Step 2: Try to get other participants from conversation_participants
       const { data: otherParticipants } = await supabase
         .from("conversation_participants")
         .select("conversation_id,user_id")
         .in("conversation_id", conversationIds)
         .neq("user_id", user.id);
 
-      // Build map: conversation_id -> other user ID
       const convToOtherUserId = new Map<string, string>();
 
-      // From conversation_participants (may return results or be empty due to RLS)
       otherParticipants?.forEach((p) => {
         convToOtherUserId.set(p.conversation_id, p.user_id);
       });
 
-      // Step 3: Get ALL messages for these conversations
       const { data: allMessages } = await supabase
         .from("messages")
         .select("conversation_id,content,created_at,sender_id")
         .in("conversation_id", conversationIds)
         .order("created_at", { ascending: false });
 
-      // From messages: identify other users by sender_id != me
       allMessages?.forEach((msg) => {
         if (
           msg.sender_id !== user.id &&
@@ -92,7 +84,6 @@ const MessageScreen = () => {
         }
       });
 
-      // Step 4: Load cached mappings for conversations we still can't identify
       const convCache = await loadConvCache();
       conversationIds.forEach((convId) => {
         if (!convToOtherUserId.has(convId) && convCache[convId]) {
@@ -100,7 +91,6 @@ const MessageScreen = () => {
         }
       });
 
-      // Build latest message map
       const latestMsgMap = new Map<string, any>();
       allMessages?.forEach((msg) => {
         if (!latestMsgMap.has(msg.conversation_id)) {
@@ -108,7 +98,6 @@ const MessageScreen = () => {
         }
       });
 
-      // Step 5: Get user details for all other user IDs
       const otherUserIds = [...new Set(convToOtherUserId.values())];
 
       if (otherUserIds.length === 0) {
@@ -125,29 +114,33 @@ const MessageScreen = () => {
       const usersMap = new Map<string, any>();
       users?.forEach((u) => usersMap.set(u.id, u));
 
-      // Step 6: Build the chat list — only include conversations that have messages
       const chats: any[] = [];
+
+      const readReceiptsRaw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
+      const readReceipts = readReceiptsRaw ? JSON.parse(readReceiptsRaw) : {};
 
       conversationIds.forEach((convId) => {
         const otherUserId = convToOtherUserId.get(convId);
         const otherUser = otherUserId ? usersMap.get(otherUserId) : null;
         const latestMsg = latestMsgMap.get(convId);
 
-        // Only show conversations that have both an identified other user AND at least one message
         if (!otherUser || !latestMsg) return;
 
         const isMyMessage = latestMsg.sender_id === user.id;
+        const msgTime = new Date(latestMsg.created_at).getTime();
+        const lastRead = readReceipts[convId] || 0;
+        const isUnread = !isMyMessage && msgTime > lastRead;
 
         chats.push({
           id: convId,
           otherUser,
           lastMessage: `${isMyMessage ? "You: " : ""}${latestMsg.content}`,
           time: formatTimestamp(latestMsg.created_at),
-          latestTimestamp: new Date(latestMsg.created_at).getTime(),
+          latestTimestamp: msgTime,
+          isUnread,
         });
       });
 
-      // Sort by latest message timestamp — most recent first (Instagram-style)
       chats.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
 
       setConversations(chats);
@@ -177,13 +170,47 @@ const MessageScreen = () => {
     });
   };
 
+  const confirmDeleteChat = (conversationId: string) => {
+    Alert.alert(
+      "Delete Chat",
+      "Are you sure you want to delete?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => handleDeleteChat(conversationId),
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
+  const handleDeleteChat = async (conversationId: string) => {
+    try {
+      if (!user?.id) return;
+      const { error } = await supabase
+        .from("conversation_participants")
+        .delete()
+        .eq("conversation_id", conversationId)
+        .eq("user_id", user.id);
+
+      if (!error) {
+        setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      } else {
+        console.error("Delete chat error:", error);
+      }
+    } catch (err) {
+      console.error("Delete chat exception:", err);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
       fetchConversations();
     }, [user?.id]),
   );
 
-  // Subscribe to realtime for instant updates
   useEffect(() => {
     if (!user?.id) return;
 
@@ -268,9 +295,11 @@ const MessageScreen = () => {
             renderItem={({ item }) => (
               <ChatItem
                 username={item.otherUser.username}
-                avatar={item.otherUser.photo_url || "https://i.pravatar.cc/150"}
+                avatar={item.otherUser.photo_url || "https://i.pravatar.cc/140"}
                 message={item.lastMessage}
                 time={item.time}
+                isUnread={item.isUnread}
+                onDelete={() => confirmDeleteChat(item.id)}
                 onPress={() =>
                   navigation.navigate("ChatRoom", {
                     conversationId: item.id,

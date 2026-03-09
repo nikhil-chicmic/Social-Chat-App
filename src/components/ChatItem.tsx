@@ -1,6 +1,7 @@
-// Simple replacement to improve premium feeling
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { DarkTheme } from "../theme/DarkTheme";
 import { Props } from "../types";
 
 export default function ChatItem({
@@ -9,21 +10,47 @@ export default function ChatItem({
   message,
   time,
   onPress,
-}: Props) {
+  isUnread,
+  onDelete,
+}: Props & { isUnread?: boolean; onDelete?: () => void }) {
   return (
-    <TouchableOpacity activeOpacity={0.7} style={styles.container} onPress={onPress}>
+    <TouchableOpacity
+      activeOpacity={0.7}
+      style={styles.container}
+      onPress={onPress}
+    >
       <View style={styles.avatarContainer}>
         <Image source={{ uri: avatar }} style={styles.avatar} />
-        {/* Optional: Add an online indicator dot here if needed in future */}
       </View>
 
       <View style={styles.textContainer}>
         <View style={styles.headerRow}>
-          <Text style={styles.username}>{username}</Text>
-          {time ? <Text style={styles.time}>{time}</Text> : null}
+          <Text style={[styles.username, isUnread && styles.unreadText]}>
+            {username}
+          </Text>
+          <View style={styles.rightActions}>
+            {isUnread && <View style={styles.unreadDot} />}
+            {time ? (
+              <Text style={[styles.time, isUnread && styles.unreadTime]}>
+                {time}
+              </Text>
+            ) : null}
+            {onDelete ? (
+              <TouchableOpacity
+                onPress={onDelete}
+                style={styles.deleteBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="trash-outline" size={18} color={"red"} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
 
-        <Text numberOfLines={1} style={styles.message}>
+        <Text
+          numberOfLines={1}
+          style={[styles.message, isUnread && styles.unreadText]}
+        >
           {message}
         </Text>
       </View>
@@ -58,20 +85,43 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 4,
   },
+  rightActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   username: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#EAEAEA",
     letterSpacing: 0.2,
+    flex: 1,
   },
   message: {
     fontSize: 15,
-    color: "#8E8E93", // Premium iOS dark mode secondary color
+    color: "#8E8E93",
     flexShrink: 1,
   },
   time: {
     fontSize: 13,
     color: "#6B6B70",
     fontWeight: "500",
+  },
+  unreadText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  unreadTime: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: DarkTheme.PRIMARY_BUTTON, // Use primary theme color
+  },
+  deleteBtn: {
+    marginLeft: 4,
   },
 });

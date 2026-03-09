@@ -184,7 +184,12 @@ const SearchScreen = () => {
   const renderUser = useCallback(({ item }: any) => {
     return (
       <View style={styles.userRow}>
-        <View style={styles.userInfo}>
+        <TouchableOpacity
+          style={styles.userInfo}
+          onPress={() => {
+            navigation.push("OtherProfile", { userId: item.id });
+          }}
+        >
           <Image
             source={item.photo_url ? { uri: item.photo_url } : blankProfile}
             style={styles.avatar}
@@ -199,7 +204,7 @@ const SearchScreen = () => {
               </Text>
             )}
           </View>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.actionButtons}>
           <TouchableOpacity
