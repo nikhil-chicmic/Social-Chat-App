@@ -138,12 +138,12 @@ export default function ChatRoomScreen() {
     const messageText = inputText.trim();
     setInputText("");
 
-    const newMessage = await supabase.from("messages").insert({
+    const newMessage = {
       conversation_id: conversationId,
-      sender_id: user?.id,
+      sender_id: user.id,
       content: messageText,
       created_at: new Date().toISOString(),
-    });
+    };
 
     try {
       const { data, error } = await supabase
