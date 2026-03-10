@@ -1,5 +1,12 @@
-import React from "react";
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import {
+  Animated,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { DarkTheme } from "../theme/DarkTheme";
 import { Props } from "../types";
 
@@ -12,6 +19,18 @@ export default function ChatItem({
   isUnread,
   onDelete,
 }: Props & { isUnread?: boolean; onDelete?: () => void }) {
+  // Animated value for the unread dot – scale + opacity
+  const dotAnim = useRef(new Animated.Value(isUnread ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(dotAnim, {
+      toValue: isUnread ? 1 : 0,
+      useNativeDriver: true,
+      tension: 180,
+      friction: 9,
+    }).start();
+  }, [isUnread]);
+
   return (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -28,7 +47,15 @@ export default function ChatItem({
             {username}
           </Text>
           <View style={styles.rightActions}>
-            {isUnread && <View style={styles.unreadDot} />}
+            <Animated.View
+              style={[
+                styles.unreadDot,
+                {
+                  opacity: dotAnim,
+                  transform: [{ scale: dotAnim }],
+                },
+              ]}
+            />
             {time ? (
               <Text style={[styles.time, isUnread && styles.unreadTime]}>
                 {time}
@@ -63,7 +90,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#2a2a2a", // Fallback background
+    backgroundColor: "#2a2a2a",
   },
   textContainer: {
     flex: 1,
@@ -106,13 +133,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: DarkTheme.PRIMARY_BUTTON, // Use primary theme color
-  },
-  deleteBtn: {
-    marginLeft: 12,
-    justifyContent: "center",
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: DarkTheme.PRIMARY_BUTTON,
   },
 });

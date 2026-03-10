@@ -355,6 +355,7 @@ const MessageScreen = () => {
           <FlatList
             bounces={false}
             data={conversations}
+            extraData={conversations}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <ChatItem
