@@ -217,17 +217,8 @@ const MessageScreen = () => {
           schema: "public",
           table: "messages",
         },
-        async (payload) => {
+        (payload) => {
           const newMsg = payload.new;
-
-          // Read the latest receipt timestamps so we don't mark a
-          // conversation unread if the user is currently inside it.
-          const readReceiptsRaw = await AsyncStorage.getItem(
-            "READ_RECEIPTS_CACHE",
-          );
-          const readReceipts = readReceiptsRaw
-            ? JSON.parse(readReceiptsRaw)
-            : {};
 
           setConversations((prev) => {
             const index = prev.findIndex(
@@ -235,14 +226,13 @@ const MessageScreen = () => {
             );
 
             if (index === -1) {
-              // conversation not loaded yet
+              // conversation not in list yet — do a full re-fetch
               doFetch(false);
               return prev;
             }
 
             const isMyMessage = newMsg.sender_id === user.id;
             const msgTime = new Date(newMsg.created_at).getTime();
-            const lastRead = readReceipts[newMsg.conversation_id] || 0;
 
             const updated = [...prev];
 
@@ -251,7 +241,10 @@ const MessageScreen = () => {
               lastMessage: `${isMyMessage ? "You: " : ""}${newMsg.content}`,
               time: formatTimestamp(newMsg.created_at),
               latestTimestamp: msgTime,
-              isUnread: !isMyMessage && msgTime > lastRead,
+              // Always flag as unread when the other person sends a message.
+              // The useFocusEffect re-fetch clears the badge when the user
+              // returns from ChatRoomScreen (which updates READ_RECEIPTS_CACHE).
+              isUnread: !isMyMessage,
             };
 
             updated.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
