@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   },
   imageBoxSelected: {
     borderStyle: "solid",
-    borderColor: "#000", // Hide border when image is selected
+    borderColor: "#000",
   },
   preview: {
     width: "100%",

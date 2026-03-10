@@ -166,18 +166,31 @@ export default function ChatRoomScreen() {
       // Fire backend push notification via Supabase Edge Function
       const recipientId = otherUser?.id;
       if (recipientId) {
-        await supabase.functions.invoke("send-push", {
-          body: {
-            recipientId,
-            title: `New message from ${user?.user_metadata?.username || "Someone"}`,
-            body: messageText,
-            data: {
-              type: "message",
-              conversationId,
-              fromUserId: user?.id,
-            },
-          },
-        });
+        try {
+          const { data: fnData, error: fnError } =
+            await supabase.functions.invoke("send-push", {
+              body: {
+                recipientId,
+                title: `New message from ${
+                  user?.user_metadata?.username || "Someone"
+                }`,
+                body: messageText,
+                data: {
+                  type: "message",
+                  conversationId,
+                  fromUserId: user?.id,
+                },
+              },
+            });
+
+          if (fnError) {
+            console.error("send-push function error:", fnError);
+          } else {
+            console.log("send-push function response:", fnData);
+          }
+        } catch (err) {
+          console.error("send-push function network error:", err);
+        }
       }
     } catch (err) {
       console.error(err);
