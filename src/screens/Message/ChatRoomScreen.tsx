@@ -63,6 +63,7 @@ export default function ChatRoomScreen() {
     if (!conversationId) return;
 
     loadMessages();
+    scrollToBottom();
     const channel = subscribeRealtime();
 
     return () => {
