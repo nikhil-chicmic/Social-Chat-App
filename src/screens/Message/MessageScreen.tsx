@@ -34,6 +34,7 @@ const MessageScreen = () => {
 
   const conversationsRef = useRef<any[]>([]);
   const realtimeChannelRef = useRef<any>(null);
+  const pollIntervalRef = useRef<any>(null);
 
   useEffect(() => {
     conversationsRef.current = conversations;
@@ -288,8 +289,18 @@ const MessageScreen = () => {
       fetchConversations();
       subscribeRealtime();
 
+      if (!pollIntervalRef.current) {
+        pollIntervalRef.current = setInterval(() => {
+          doFetch(false);
+        }, 4000);
+      }
+
       return () => {
         unsubscribeRealtime();
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
       };
     }, [user?.id]),
   );
