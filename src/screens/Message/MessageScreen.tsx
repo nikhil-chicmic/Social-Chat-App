@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import React, { useCallback, useContext, useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -24,6 +24,9 @@ const MessageScreen = () => {
   const { user } = useContext(AuthContext);
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Keep a ref to fetchConversations so realtime callbacks never go stale
+  const fetchConversationsRef = useRef<() => void>(() => {});
 
   const loadConvCache = async (): Promise<Record<string, string>> => {
     try {
@@ -217,6 +220,10 @@ const MessageScreen = () => {
   );
 
   useEffect(() => {
+    fetchConversationsRef.current = fetchConversations;
+  });
+
+  useEffect(() => {
     if (!user?.id) return;
 
     const channel = supabase
@@ -238,7 +245,10 @@ const MessageScreen = () => {
               (c) => c.id === newMsg.conversation_id,
             );
 
-            if (index === -1) return prev;
+            if (index === -1) {
+              fetchConversationsRef.current();
+              return prev;
+            }
 
             const isMyMessage = newMsg.sender_id === user.id;
 
@@ -254,6 +264,18 @@ const MessageScreen = () => {
 
             return updated;
           });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversation_participants",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          fetchConversationsRef.current();
         },
       )
       .on(
