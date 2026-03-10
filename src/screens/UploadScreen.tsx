@@ -13,6 +13,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  DeviceEventEmitter,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
@@ -73,9 +74,9 @@ const UploadScreen = () => {
           caption: caption.trim(),
         },
       ]);
-      if (insertError) throw insertError;
       setImage(null);
       setCaption("");
+      DeviceEventEmitter.emit("post_uploaded");
       Alert.alert("Success", "Post uploaded successfully");
     } catch (error: any) {
       Alert.alert("Upload failed", error.message);

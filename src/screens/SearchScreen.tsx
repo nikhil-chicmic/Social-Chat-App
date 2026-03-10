@@ -4,7 +4,6 @@ import { useNavigation } from "@react-navigation/native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  DeviceEventEmitter,
   FlatList,
   Image,
   StyleSheet,
@@ -25,7 +24,7 @@ const SearchScreen = () => {
   const [query, setQuery] = useState("");
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadRecommendedUsers = async () => {
     setLoading(true);
@@ -71,14 +70,7 @@ const SearchScreen = () => {
 
   useEffect(() => {
     loadRecommendedUsers();
-
-    const sub = DeviceEventEmitter.addListener("followChanged", () => {
-      if (query.trim() === "") loadRecommendedUsers();
-      else searchUsers(query);
-    });
-
-    return () => sub.remove();
-  }, [query]);
+  }, []);
 
   const handleSearch = (text: string) => {
     setQuery(text);

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -8,6 +8,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  DeviceEventEmitter,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../../lib/supabase";
@@ -25,6 +26,7 @@ const HomeScreen = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
 
   const fetchPosts = useCallback(
     async (reset = false) => {
@@ -72,7 +74,14 @@ const HomeScreen = () => {
 
   useEffect(() => {
     fetchPosts(true);
-  }, []);
+
+    const sub = DeviceEventEmitter.addListener("post_uploaded", () => {
+      fetchPosts(true);
+      flatListRef.current?.scrollToOffset({ animated: true, offset: 0 });
+    });
+
+    return () => sub.remove();
+  }, [fetchPosts]);
 
   useEffect(() => {
     const channel = supabase
@@ -144,6 +153,7 @@ const HomeScreen = () => {
         </View>
 
         <FlatList
+          ref={flatListRef}
           data={posts}
           keyExtractor={(item) => item.id}
           renderItem={renderPost}
