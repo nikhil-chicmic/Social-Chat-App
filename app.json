@@ -24,11 +24,21 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.nikhil.myapp"
+      "package": "com.nikhil.myapp",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-web-browser"]
+    "plugins": [
+      "expo-web-browser",
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7df80275-debd-4a25-bdb4-7334ef6f163f"
+      }
+    },
+    "owner": "nikhil071"
   }
 }

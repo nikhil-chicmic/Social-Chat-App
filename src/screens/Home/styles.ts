@@ -39,6 +39,7 @@ export const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 15,
     fontSize: 15,
+    color: "#111827",
   },
   primaryButton: {
     backgroundColor: "#BAF533",
@@ -105,8 +106,6 @@ export const styles = StyleSheet.create({
   },
 
   header: {
-    marginTop: 10,
-    marginBottom: 5,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -136,7 +135,7 @@ export const styles = StyleSheet.create({
 
   storySection: {
     paddingLeft: 20,
-    marginTop: 10,
-    marginBottom: 16,
+    marginTop: 5,
+    marginBottom: 8,
   },
 });

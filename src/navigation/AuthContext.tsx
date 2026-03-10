@@ -1,6 +1,8 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import { Session, User } from "@supabase/supabase-js";
-import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
+import * as Device from "expo-device";
 import React, {
   createContext,
   ReactNode,
@@ -8,6 +10,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { Platform } from "react-native";
 import { supabase } from "../../lib/supabase";
 
 Notifications.setNotificationHandler({
@@ -61,8 +64,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const registerPushToken = async () => {
       try {
-        if (!Device.isDevice) {
-          console.log("Push notifications require a physical device.");
+        const isPhysicalDevice = Device.isDevice;
+        const isAndroidEmulator = !Device.isDevice && Platform.OS === "android";
+
+        // Allow physical devices on both platforms and Android emulators.
+        // iOS simulator still cannot receive real push notifications.
+        if (!isPhysicalDevice && !isAndroidEmulator) {
+          console.log(
+            "Push notifications require a physical device or Android emulator.",
+          );
+          return;
+        }
+
+        // Respect a stored user choice to not receive notifications
+        const deniedFlag = await AsyncStorage.getItem(
+          "NOTIFICATIONS_PERMISSION_DENIED",
+        );
+        if (deniedFlag === "true") {
+          console.log("User has previously denied notifications; skipping.");
+          setHasRegisteredPush(true);
           return;
         }
 
@@ -77,10 +97,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (finalStatus !== "granted") {
           console.log("Notification permissions not granted.");
+          await AsyncStorage.setItem(
+            "NOTIFICATIONS_PERMISSION_DENIED",
+            "true",
+          );
+          setHasRegisteredPush(true);
           return;
         }
 
-        const tokenResponse = await Notifications.getExpoPushTokenAsync();
+        // Clear the denied flag if the user has now accepted
+        await AsyncStorage.removeItem("NOTIFICATIONS_PERMISSION_DENIED");
+
+        // Resolve the Expo projectId explicitly to satisfy SDK 51+ requirements
+        const projectId =
+          // EAS-managed projects expose this at runtime in dev client / builds
+          (Constants as any).easConfig?.projectId ||
+          Constants.expoConfig?.extra?.eas?.projectId ||
+          process.env.EXPO_PROJECT_ID;
+
+        if (!projectId) {
+          console.log(
+            'Expo projectId is missing. Set EXPO_PROJECT_ID or ensure EAS project is linked.',
+          );
+          setHasRegisteredPush(true);
+          return;
+        }
+
+        const tokenResponse = await Notifications.getExpoPushTokenAsync({
+          projectId,
+        });
         const token = tokenResponse.data;
 
         if (!token) return;
