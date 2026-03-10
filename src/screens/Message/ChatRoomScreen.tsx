@@ -1,7 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -31,9 +37,6 @@ export default function ChatRoomScreen() {
   const [loadingMessages, setLoadingMessages] = useState(true);
 
   const flatListRef = useRef<FlatList>(null);
-  // Track whether the list has done its initial scroll so we only
-  // auto-scroll on new messages, not on every content resize.
-  const initialScrollDone = useRef(false);
 
   const updateReadReceipt = useCallback(
     async (timestamp?: number) => {
@@ -41,9 +44,12 @@ export default function ChatRoomScreen() {
         const raw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
         const cache = raw ? JSON.parse(raw) : {};
         cache[conversationId] = timestamp || Date.now();
-        await AsyncStorage.setItem("READ_RECEIPTS_CACHE", JSON.stringify(cache));
+        await AsyncStorage.setItem(
+          "READ_RECEIPTS_CACHE",
+          JSON.stringify(cache),
+        );
       } catch (err) {
-        console.error("Failed to update read receipt:", err);
+        console.error("Read receipt error:", err);
       }
     },
     [conversationId],
@@ -60,14 +66,12 @@ export default function ChatRoomScreen() {
     const channel = subscribeRealtime();
 
     return () => {
-      supabase.removeChannel(channel);
+      channel.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   async function loadMessages() {
     setLoadingMessages(true);
-    initialScrollDone.current = false;
 
     try {
       const { data, error } = await supabase
@@ -77,74 +81,53 @@ export default function ChatRoomScreen() {
         .order("created_at", { ascending: true });
 
       if (error) {
-        console.error("Load messages error:", error);
-        setLoadingMessages(false);
+        console.error(error);
         return;
       }
 
       setMessages(data || []);
 
+      setTimeout(() => {
+        scrollToBottom(false);
+      }, 100);
+
       if (data && data.length > 0) {
-        const latestMsg = data[data.length - 1];
-        updateReadReceipt(new Date(latestMsg.created_at).getTime());
+        const last = data[data.length - 1];
+        updateReadReceipt(new Date(last.created_at).getTime());
       } else {
         updateReadReceipt(Date.now());
       }
-
-      // Scroll after data is set
-      setTimeout(() => {
-        scrollToBottom(false);
-        initialScrollDone.current = true;
-      }, 150);
     } catch (err) {
-      console.error("loadMessages exception:", err);
+      console.error(err);
     }
 
     setLoadingMessages(false);
   }
 
   function subscribeRealtime() {
-    return supabase
-      .channel(`chat-room-${conversationId}`)
+    const channel = supabase
+      .channel(`chat-${conversationId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "messages",
-          // Server-side filter: only receive events for THIS conversation.
-          // This is the key fix ensuring the receiver gets messages instantly.
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          setMessages((prev) => {
-            // Deduplicate: sender already appended optimistically via sendMessage
-            if (prev.some((m) => m.id === payload.new.id)) return prev;
-            return [...prev, payload.new];
-          });
+          setMessages((prev) => [...prev, payload.new]);
 
           updateReadReceipt(new Date(payload.new.created_at).getTime());
 
-          setTimeout(() => scrollToBottom(true), 80);
+          setTimeout(() => scrollToBottom(true), 50);
         },
       )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "conversations",
-          filter: `id=eq.${conversationId}`,
-        },
-        () => {
-          if (navigation.canGoBack()) {
-            navigation.goBack();
-          } else {
-            navigation.navigate("Message");
-          }
-        },
-      )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Realtime status:", status);
+      });
+
+    return channel;
   }
 
   async function sendMessage() {
@@ -165,19 +148,15 @@ export default function ChatRoomScreen() {
         .single();
 
       if (error) {
-        console.error("Send message error:", error);
+        console.error(error);
         return;
       }
 
-      // Optimistically add to local state (realtime will deduplicate)
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === data.id)) return prev;
-        return [...prev, data];
-      });
+      setMessages((prev) => [...prev, data]);
 
       updateReadReceipt(new Date(data.created_at).getTime());
 
-      setTimeout(() => scrollToBottom(true), 80);
+      setTimeout(() => scrollToBottom(true), 50);
 
       await supabase
         .from("conversations")
@@ -187,7 +166,7 @@ export default function ChatRoomScreen() {
         })
         .eq("id", conversationId);
     } catch (err) {
-      console.error("sendMessage exception:", err);
+      console.error(err);
     }
   }
 
@@ -213,18 +192,17 @@ export default function ChatRoomScreen() {
           <Text style={[styles.messageText, { color: isMe ? "#000" : "#fff" }]}>
             {item.content}
           </Text>
+
           <Text
             style={[
               styles.timeText,
               { color: isMe ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.4)" },
             ]}
           >
-            {item.created_at
-              ? new Date(item.created_at).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : ""}
+            {new Date(item.created_at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </Text>
         </View>
       </View>
@@ -236,7 +214,6 @@ export default function ChatRoomScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "android" ? 0 : 0}
       >
         <TouchableOpacity
           style={styles.header}
@@ -259,9 +236,7 @@ export default function ChatRoomScreen() {
         </TouchableOpacity>
 
         {loadingMessages ? (
-          <View
-            style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-          >
+          <View style={styles.loader}>
             <ActivityIndicator size="large" color={DarkTheme.PRIMARY_BUTTON} />
           </View>
         ) : (
@@ -270,34 +245,8 @@ export default function ChatRoomScreen() {
             data={messages}
             keyExtractor={(item) => item.id.toString()}
             renderItem={renderMessage}
-            contentContainerStyle={
-              messages.length === 0
-                ? { flex: 1, justifyContent: "center", alignItems: "center" }
-                : { padding: 16, paddingBottom: 8 }
-            }
+            contentContainerStyle={{ padding: 16 }}
             showsVerticalScrollIndicator={false}
-            // Auto-scroll as content grows (covers both new messages and
-            // initial load without relying solely on setTimeout).
-            onContentSizeChange={() => {
-              if (initialScrollDone.current) {
-                scrollToBottom(true);
-              }
-            }}
-            ListEmptyComponent={
-              <View style={{ alignItems: "center", padding: 40 }}>
-                <Ionicons name="chatbubble-outline" size={48} color="#444" />
-                <Text
-                  style={{
-                    color: "#666",
-                    marginTop: 16,
-                    fontSize: 16,
-                    textAlign: "center",
-                  }}
-                >
-                  No messages yet.{"\n"}Say hello! 👋
-                </Text>
-              </View>
-            }
           />
         )}
 
@@ -309,7 +258,6 @@ export default function ChatRoomScreen() {
             placeholderTextColor="#888"
             onChangeText={setInputText}
             onSubmitEditing={sendMessage}
-            blurOnSubmit={false}
             multiline
           />
 
@@ -390,6 +338,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 4,
     textAlign: "right",
+  },
+  loader: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   inputRow: {
     flexDirection: "row",
