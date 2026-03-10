@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import React, { useCallback, useContext, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -10,13 +9,12 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { supabase } from "../../../lib/supabase";
 import ChatItem from "../../components/ChatItem";
 import AuthContext from "../../navigation/AuthContext";
 import { DarkTheme } from "../../theme/DarkTheme";
 import { styles } from "./styles";
-
-const CONV_CACHE_KEY = "chat_conversation_cache";
 
 const MessageScreen = () => {
   const navigation = useNavigation<any>();
@@ -25,92 +23,72 @@ const MessageScreen = () => {
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadConvCache = async (): Promise<Record<string, string>> => {
-    try {
-      const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  };
-
   const fetchConversations = useCallback(async () => {
     if (!user?.id) return;
 
     try {
-      const { data: myParticipations } = await supabase
+      const { data: participations } = await supabase
         .from("conversation_participants")
         .select("conversation_id")
         .eq("user_id", user.id);
 
-      if (!myParticipations || myParticipations.length === 0) {
+      if (!participations || participations.length === 0) {
         setConversations([]);
         setLoading(false);
         return;
       }
 
-      const conversationIds = myParticipations.map((p) => p.conversation_id);
+      const conversationIds = participations.map((p) => p.conversation_id);
 
-      const { data: otherParticipants } = await supabase
+      const { data: messages } = await supabase
+        .from("messages")
+        .select("*")
+        .in("conversation_id", conversationIds)
+        .order("created_at", { ascending: false });
+
+      const latestMap = new Map();
+
+      messages?.forEach((msg) => {
+        if (!latestMap.has(msg.conversation_id)) {
+          latestMap.set(msg.conversation_id, msg);
+        }
+      });
+
+      const { data: participants } = await supabase
         .from("conversation_participants")
         .select("conversation_id,user_id")
         .in("conversation_id", conversationIds)
         .neq("user_id", user.id);
 
-      const convToOtherUserId = new Map<string, string>();
-
-      otherParticipants?.forEach((p) => {
-        convToOtherUserId.set(p.conversation_id, p.user_id);
-      });
-
-      const { data: allMessages } = await supabase
-        .from("messages")
-        .select("conversation_id,content,created_at,sender_id")
-        .in("conversation_id", conversationIds)
-        .order("created_at", { ascending: false });
-
-      const latestMsgMap = new Map<string, any>();
-
-      allMessages?.forEach((msg) => {
-        if (!latestMsgMap.has(msg.conversation_id)) {
-          latestMsgMap.set(msg.conversation_id, msg);
-        }
-      });
-
-      const otherUserIds = [...new Set(convToOtherUserId.values())];
+      const userIds = participants?.map((p) => p.user_id) || [];
 
       const { data: users } = await supabase
         .from("users")
         .select("*")
-        .in("id", otherUserIds);
+        .in("id", userIds);
 
-      const usersMap = new Map<string, any>();
-      users?.forEach((u) => usersMap.set(u.id, u));
-
-      const readReceiptsRaw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
-      const readReceipts = readReceiptsRaw ? JSON.parse(readReceiptsRaw) : {};
+      const userMap = new Map();
+      users?.forEach((u) => userMap.set(u.id, u));
 
       const chats: any[] = [];
 
-      conversationIds.forEach((convId) => {
-        const otherUserId = convToOtherUserId.get(convId);
-        const otherUser = otherUserId ? usersMap.get(otherUserId) : null;
-        const latestMsg = latestMsgMap.get(convId);
+      conversationIds.forEach((id) => {
+        const msg = latestMap.get(id);
+        const participant = participants?.find((p) => p.conversation_id === id);
 
-        if (!otherUser || !latestMsg) return;
+        if (!msg || !participant) return;
 
-        const isMyMessage = latestMsg.sender_id === user.id;
-        const msgTime = new Date(latestMsg.created_at).getTime();
-        const lastRead = readReceipts[convId] || 0;
-        const isUnread = !isMyMessage && msgTime > lastRead;
+        const otherUser = userMap.get(participant.user_id);
 
         chats.push({
-          id: convId,
+          id,
           otherUser,
-          lastMessage: `${isMyMessage ? "You: " : ""}${latestMsg.content}`,
-          time: formatTimestamp(latestMsg.created_at),
-          latestTimestamp: msgTime,
-          isUnread,
+          lastMessage: msg.content,
+          time: new Date(msg.created_at).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          latestTimestamp: new Date(msg.created_at).getTime(),
         });
       });
 
@@ -123,42 +101,15 @@ const MessageScreen = () => {
     }
   }, [user?.id]);
 
-  const formatTimestamp = (dateStr: string) => {
-    const now = new Date();
-    const date = new Date(dateStr);
-    const diffMs = now.getTime() - date.getTime();
-
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return "now";
-    if (diffMins < 60) return `${diffMins}m`;
-    if (diffHours < 24) return `${diffHours}h`;
-    if (diffDays < 7) return `${diffDays}d`;
-
-    return date.toLocaleDateString([], {
-      month: "short",
-      day: "numeric",
-    });
-  };
-
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchConversations();
-    }, [fetchConversations]),
-  );
-
-  // REALTIME LISTENER
   useEffect(() => {
     if (!user?.id) return;
 
     const channel = supabase
-      .channel(`messages-${user.id}`)
+      .channel(`messages-list-${user.id}`)
       .on(
         "postgres_changes",
         {
@@ -170,7 +121,21 @@ const MessageScreen = () => {
           fetchConversations();
         },
       )
-      .subscribe();
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversation_participants",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          fetchConversations();
+        },
+      )
+      .subscribe((status) => {
+        console.log("Messages realtime:", status);
+      });
 
     return () => {
       channel.unsubscribe();
@@ -183,18 +148,18 @@ const MessageScreen = () => {
       style={{ flex: 1, backgroundColor: DarkTheme.PRIMARY_BACKGROUND }}
     >
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backIcon}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={26} color="#fff" />
         </TouchableOpacity>
 
         <Text style={styles.headerText}>Messages</Text>
 
         <TouchableOpacity
-          style={styles.newChatIcon}
-          onPress={() => navigation.navigate("Main", { screen: "Search" })}
+          onPress={() =>
+            navigation.navigate("Main", {
+              screen: "Search",
+            })
+          }
         >
           <Ionicons name="create-outline" size={26} color="#fff" />
         </TouchableOpacity>
@@ -209,22 +174,10 @@ const MessageScreen = () => {
           />
         ) : conversations.length === 0 ? (
           <View style={styles.emptyBox}>
-            <View style={styles.emptyIconCircle}>
-              <Ionicons name="chatbubbles-outline" size={48} color="#555" />
-            </View>
-
             <Text style={styles.emptyTitle}>Your Messages</Text>
-
             <Text style={styles.emptyText}>
-              Connect with friends and share moments.
+              Connect with friends and start chatting.
             </Text>
-
-            <TouchableOpacity
-              style={styles.findFriendsButton}
-              onPress={() => navigation.navigate("Main", { screen: "Search" })}
-            >
-              <Text style={styles.findFriendsText}>Find Friends</Text>
-            </TouchableOpacity>
           </View>
         ) : (
           <FlatList
@@ -233,10 +186,9 @@ const MessageScreen = () => {
             renderItem={({ item }) => (
               <ChatItem
                 username={item.otherUser.username}
-                avatar={item.otherUser.photo_url || "https://i.pravatar.cc/140"}
+                avatar={item.otherUser.photo_url}
                 message={item.lastMessage}
                 time={item.time}
-                isUnread={item.isUnread}
                 onPress={() =>
                   navigation.navigate("ChatRoom", {
                     conversationId: item.id,
@@ -245,7 +197,6 @@ const MessageScreen = () => {
                 }
               />
             )}
-            showsVerticalScrollIndicator={false}
           />
         )}
       </View>
