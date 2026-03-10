@@ -37,122 +37,6 @@ const MessageScreen = () => {
     }
   };
 
-  const fetchConversations = async () => {
-    if (!user?.id) return;
-
-    setLoading(true);
-
-    try {
-      const { data: myParticipations, error: partError } = await supabase
-        .from("conversation_participants")
-        .select("conversation_id")
-        .eq("user_id", user.id);
-
-      if (partError) {
-        console.error("Error fetching participations:", partError);
-      }
-
-      if (!myParticipations || myParticipations.length === 0) {
-        setConversations([]);
-        setLoading(false);
-        return;
-      }
-
-      const conversationIds = myParticipations.map((p) => p.conversation_id);
-
-      const { data: otherParticipants } = await supabase
-        .from("conversation_participants")
-        .select("conversation_id,user_id")
-        .in("conversation_id", conversationIds)
-        .neq("user_id", user.id);
-
-      const convToOtherUserId = new Map<string, string>();
-
-      otherParticipants?.forEach((p) => {
-        convToOtherUserId.set(p.conversation_id, p.user_id);
-      });
-
-      const { data: allMessages } = await supabase
-        .from("messages")
-        .select("conversation_id,content,created_at,sender_id")
-        .in("conversation_id", conversationIds)
-        .order("created_at", { ascending: false });
-
-      allMessages?.forEach((msg) => {
-        if (
-          msg.sender_id !== user.id &&
-          !convToOtherUserId.has(msg.conversation_id)
-        ) {
-          convToOtherUserId.set(msg.conversation_id, msg.sender_id);
-        }
-      });
-
-      const convCache = await loadConvCache();
-      conversationIds.forEach((convId) => {
-        if (!convToOtherUserId.has(convId) && convCache[convId]) {
-          convToOtherUserId.set(convId, convCache[convId]);
-        }
-      });
-
-      const latestMsgMap = new Map<string, any>();
-      allMessages?.forEach((msg) => {
-        if (!latestMsgMap.has(msg.conversation_id)) {
-          latestMsgMap.set(msg.conversation_id, msg);
-        }
-      });
-
-      const otherUserIds = [...new Set(convToOtherUserId.values())];
-
-      if (otherUserIds.length === 0) {
-        setConversations([]);
-        setLoading(false);
-        return;
-      }
-
-      const { data: users } = await supabase
-        .from("users")
-        .select("*")
-        .in("id", otherUserIds);
-
-      const usersMap = new Map<string, any>();
-      users?.forEach((u) => usersMap.set(u.id, u));
-
-      const chats: any[] = [];
-
-      const readReceiptsRaw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
-      const readReceipts = readReceiptsRaw ? JSON.parse(readReceiptsRaw) : {};
-
-      conversationIds.forEach((convId) => {
-        const otherUserId = convToOtherUserId.get(convId);
-        const otherUser = otherUserId ? usersMap.get(otherUserId) : null;
-        const latestMsg = latestMsgMap.get(convId);
-
-        if (!otherUser || !latestMsg) return;
-
-        const isMyMessage = latestMsg.sender_id === user.id;
-        const msgTime = new Date(latestMsg.created_at).getTime();
-        const lastRead = readReceipts[convId] || 0;
-        const isUnread = !isMyMessage && msgTime > lastRead;
-
-        chats.push({
-          id: convId,
-          otherUser,
-          lastMessage: `${isMyMessage ? "You: " : ""}${latestMsg.content}`,
-          time: formatTimestamp(latestMsg.created_at),
-          latestTimestamp: msgTime,
-          isUnread,
-        });
-      });
-
-      chats.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
-
-      setConversations(chats);
-    } catch (err) {
-      console.error("fetchConversations error:", err);
-    }
-
-    setLoading(false);
-  };
 
   const formatTimestamp = (dateStr: string) => {
     const now = new Date();
@@ -213,15 +97,135 @@ const MessageScreen = () => {
     await AsyncStorage.setItem(CONV_CACHE_KEY, JSON.stringify(cache));
   };
 
+  // Mirror conversations to a ref so realtime callbacks always see the latest list
+  const conversationsRef = useRef<any[]>([]);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  // Core fetch helper — showLoader=false for silent background refreshes
+  const doFetch = async (showLoader = true) => {
+    if (!user?.id) return;
+    if (showLoader) setLoading(true);
+
+    try {
+      const { data: myParticipations, error: partError } = await supabase
+        .from("conversation_participants")
+        .select("conversation_id")
+        .eq("user_id", user.id);
+
+      if (partError) {
+        console.error("Error fetching participations:", partError);
+      }
+
+      if (!myParticipations || myParticipations.length === 0) {
+        setConversations([]);
+        if (showLoader) setLoading(false);
+        return;
+      }
+
+      const conversationIds = myParticipations.map((p) => p.conversation_id);
+
+      const { data: otherParticipants } = await supabase
+        .from("conversation_participants")
+        .select("conversation_id,user_id")
+        .in("conversation_id", conversationIds)
+        .neq("user_id", user.id);
+
+      const convToOtherUserId = new Map<string, string>();
+      otherParticipants?.forEach((p) => {
+        convToOtherUserId.set(p.conversation_id, p.user_id);
+      });
+
+      const { data: allMessages } = await supabase
+        .from("messages")
+        .select("conversation_id,content,created_at,sender_id")
+        .in("conversation_id", conversationIds)
+        .order("created_at", { ascending: false });
+
+      allMessages?.forEach((msg) => {
+        if (msg.sender_id !== user.id && !convToOtherUserId.has(msg.conversation_id)) {
+          convToOtherUserId.set(msg.conversation_id, msg.sender_id);
+        }
+      });
+
+      const convCache = await loadConvCache();
+      conversationIds.forEach((convId) => {
+        if (!convToOtherUserId.has(convId) && convCache[convId]) {
+          convToOtherUserId.set(convId, convCache[convId]);
+        }
+      });
+
+      const latestMsgMap = new Map<string, any>();
+      allMessages?.forEach((msg) => {
+        if (!latestMsgMap.has(msg.conversation_id)) {
+          latestMsgMap.set(msg.conversation_id, msg);
+        }
+      });
+
+      const otherUserIds = [...new Set(convToOtherUserId.values())];
+
+      if (otherUserIds.length === 0) {
+        setConversations([]);
+        if (showLoader) setLoading(false);
+        return;
+      }
+
+      const { data: users } = await supabase
+        .from("users")
+        .select("*")
+        .in("id", otherUserIds);
+
+      const usersMap = new Map<string, any>();
+      users?.forEach((u) => usersMap.set(u.id, u));
+
+      const readReceiptsRaw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
+      const readReceipts = readReceiptsRaw ? JSON.parse(readReceiptsRaw) : {};
+
+      const chats: any[] = [];
+      conversationIds.forEach((convId) => {
+        const otherUserId = convToOtherUserId.get(convId);
+        const otherUser = otherUserId ? usersMap.get(otherUserId) : null;
+        const latestMsg = latestMsgMap.get(convId);
+
+        if (!otherUser || !latestMsg) return;
+
+        const isMyMessage = latestMsg.sender_id === user.id;
+        const msgTime = new Date(latestMsg.created_at).getTime();
+        const lastRead = readReceipts[convId] || 0;
+        const isUnread = !isMyMessage && msgTime > lastRead;
+
+        chats.push({
+          id: convId,
+          otherUser,
+          lastMessage: `${isMyMessage ? "You: " : ""}${latestMsg.content}`,
+          time: formatTimestamp(latestMsg.created_at),
+          latestTimestamp: msgTime,
+          isUnread,
+        });
+      });
+
+      chats.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+      setConversations(chats);
+    } catch (err) {
+      console.error("fetchConversations error:", err);
+    }
+
+    if (showLoader) setLoading(false);
+  };
+
+  const fetchConversations = () => doFetch(true);
+
+  // Keep fetchConversationsRef in sync (used by realtime callbacks)
+  useEffect(() => {
+    fetchConversationsRef.current = fetchConversations;
+  });
+
   useFocusEffect(
     useCallback(() => {
       fetchConversations();
     }, [user?.id]),
   );
-
-  useEffect(() => {
-    fetchConversationsRef.current = fetchConversations;
-  });
 
   useEffect(() => {
     if (!user?.id) return;
@@ -237,33 +241,29 @@ const MessageScreen = () => {
         },
         (payload) => {
           const newMsg: any = payload.new;
+          const currentConvs = conversationsRef.current;
+          const index = currentConvs.findIndex(
+            (c) => c.id === newMsg.conversation_id,
+          );
 
-          setConversations((prev) => {
-            const updated = [...prev];
+          if (index === -1) {
+            // Unknown conversation — silent background fetch (no spinner)
+            doFetch(false);
+            return;
+          }
 
-            const index = updated.findIndex(
-              (c) => c.id === newMsg.conversation_id,
-            );
-
-            if (index === -1) {
-              fetchConversationsRef.current();
-              return prev;
-            }
-
-            const isMyMessage = newMsg.sender_id === user.id;
-
-            updated[index] = {
-              ...updated[index],
-              lastMessage: `${isMyMessage ? "You: " : ""}${newMsg.content}`,
-              time: formatTimestamp(newMsg.created_at),
-              latestTimestamp: new Date(newMsg.created_at).getTime(),
-              isUnread: !isMyMessage,
-            };
-
-            updated.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
-
-            return updated;
-          });
+          // Conversation is already in the list — patch it instantly in-place
+          const isMyMessage = newMsg.sender_id === user.id;
+          const updatedConvs = [...currentConvs];
+          updatedConvs[index] = {
+            ...updatedConvs[index],
+            lastMessage: `${isMyMessage ? "You: " : ""}${newMsg.content}`,
+            time: formatTimestamp(newMsg.created_at),
+            latestTimestamp: new Date(newMsg.created_at).getTime(),
+            isUnread: !isMyMessage,
+          };
+          updatedConvs.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+          setConversations(updatedConvs);
         },
       )
       .on(
@@ -275,7 +275,8 @@ const MessageScreen = () => {
           filter: `user_id=eq.${user.id}`,
         },
         () => {
-          fetchConversationsRef.current();
+          // Brand-new conversation started with current user — silent reload
+          doFetch(false);
         },
       )
       .on(
@@ -287,7 +288,6 @@ const MessageScreen = () => {
         },
         (payload) => {
           const deletedId: any = payload.old.id;
-
           setConversations((prev) => prev.filter((c) => c.id !== deletedId));
         },
       )
