@@ -117,35 +117,52 @@ export default function ChatRoomScreen() {
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
+          const newMsg = payload.new;
+
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+
           setTimeout(() => scrollToBottom(true), 50);
         },
       )
-      .subscribe((status) => {
-        console.log("Realtime status:", status);
-      });
+      .subscribe();
 
     return channel;
   }
 
   async function sendMessage() {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !user?.id) return;
 
     const messageText = inputText.trim();
     setInputText("");
 
+    const newMessage = await supabase.from("messages").insert({
+      conversation_id: conversationId,
+      sender_id: user?.id,
+      content: messageText,
+      created_at: new Date().toISOString(),
+    });
+
     try {
-      const { error } = await supabase.from("messages").insert({
-        conversation_id: conversationId,
-        sender_id: user?.id,
-        content: messageText,
-      });
+      const { data, error } = await supabase
+        .from("messages")
+        .insert(newMessage)
+        .select()
+        .single();
 
       if (error) {
-        console.error(error);
+        console.error("Send message error:", error);
         return;
       }
 
+      // optimistic UI update
+      setMessages((prev) => [...prev, data]);
+
+      setTimeout(() => scrollToBottom(true), 50);
+
+      // update conversation preview metadata
       await supabase
         .from("conversations")
         .update({
@@ -154,7 +171,7 @@ export default function ChatRoomScreen() {
         })
         .eq("id", conversationId);
     } catch (err) {
-      console.error(err);
+      console.error("Send message exception:", err);
     }
   }
 

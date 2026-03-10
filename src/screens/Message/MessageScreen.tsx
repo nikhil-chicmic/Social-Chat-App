@@ -217,8 +217,8 @@ const MessageScreen = () => {
           schema: "public",
           table: "messages",
         },
-        (payload) => {
-          const newMsg: any = payload.new;
+        async (payload) => {
+          const newMsg = payload.new;
 
           setConversations((prev) => {
             const index = prev.findIndex(
@@ -226,6 +226,7 @@ const MessageScreen = () => {
             );
 
             if (index === -1) {
+              // conversation not loaded yet
               doFetch(false);
               return prev;
             }
