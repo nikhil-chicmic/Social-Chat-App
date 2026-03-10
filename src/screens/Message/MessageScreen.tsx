@@ -223,80 +223,83 @@ const MessageScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
+      if (!user?.id) return;
+
+      // Fetch conversations when screen is focused
       fetchConversations();
+
+      // Subscribe realtime channel when screen is focused
+      const channel = supabase
+        .channel("messages-realtime")
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+          },
+          (payload) => {
+            const newMsg: any = payload.new;
+            const currentConvs = conversationsRef.current;
+            const index = currentConvs.findIndex(
+              (c) => c.id === newMsg.conversation_id,
+            );
+
+            if (index === -1) {
+              // Unknown conversation — silent background fetch (no spinner)
+              doFetch(false);
+              return;
+            }
+
+            // Conversation already in list — patch it instantly in-place
+            const isMyMessage = newMsg.sender_id === user.id;
+            const updatedConvs = [...currentConvs];
+            updatedConvs[index] = {
+              ...updatedConvs[index],
+              lastMessage: `${isMyMessage ? "You: " : ""}${newMsg.content}`,
+              time: formatTimestamp(newMsg.created_at),
+              latestTimestamp: new Date(newMsg.created_at).getTime(),
+              isUnread: !isMyMessage,
+            };
+            updatedConvs.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+            setConversations(updatedConvs);
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "conversation_participants",
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            // Brand-new conversation for current user — silent reload
+            doFetch(false);
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "DELETE",
+            schema: "public",
+            table: "conversations",
+          },
+          (payload) => {
+            const deletedId: any = payload.old.id;
+            setConversations((prev) => prev.filter((c) => c.id !== deletedId));
+          },
+        )
+        .subscribe((status) => {
+          console.log("[MessageScreen] Realtime status:", status);
+        });
+
+      // Unsubscribe when screen blurs (e.g. navigating to ChatRoom)
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }, [user?.id]),
   );
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const channel = supabase
-      .channel("messages-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-        },
-        (payload) => {
-          const newMsg: any = payload.new;
-          const currentConvs = conversationsRef.current;
-          const index = currentConvs.findIndex(
-            (c) => c.id === newMsg.conversation_id,
-          );
-
-          if (index === -1) {
-            // Unknown conversation — silent background fetch (no spinner)
-            doFetch(false);
-            return;
-          }
-
-          // Conversation is already in the list — patch it instantly in-place
-          const isMyMessage = newMsg.sender_id === user.id;
-          const updatedConvs = [...currentConvs];
-          updatedConvs[index] = {
-            ...updatedConvs[index],
-            lastMessage: `${isMyMessage ? "You: " : ""}${newMsg.content}`,
-            time: formatTimestamp(newMsg.created_at),
-            latestTimestamp: new Date(newMsg.created_at).getTime(),
-            isUnread: !isMyMessage,
-          };
-          updatedConvs.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
-          setConversations(updatedConvs);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "conversation_participants",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          // Brand-new conversation started with current user — silent reload
-          doFetch(false);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "conversations",
-        },
-        (payload) => {
-          const deletedId: any = payload.old.id;
-          setConversations((prev) => prev.filter((c) => c.id !== deletedId));
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id]);
 
   return (
     <SafeAreaView
