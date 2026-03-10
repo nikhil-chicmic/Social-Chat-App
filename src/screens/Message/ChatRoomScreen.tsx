@@ -241,8 +241,8 @@ export default function ChatRoomScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        // Ensure the input is visible on Android as well when the keyboard is open
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 80}
+        // Tweak offset so the header + input stay visible when keyboard is open
+        keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 90}
       >
         <TouchableOpacity
           style={styles.header}
