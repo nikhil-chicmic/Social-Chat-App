@@ -113,6 +113,22 @@ export default function ChatRoomScreen() {
           }, 100);
         },
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "conversations",
+          filter: `id=eq.${conversationId}`,
+        },
+        () => {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            navigation.navigate("Message");
+          }
+        },
+      )
       .subscribe();
   }
 
@@ -254,6 +270,8 @@ export default function ChatRoomScreen() {
             placeholder="Message..."
             placeholderTextColor="#888"
             onChangeText={setInputText}
+            onSubmitEditing={sendMessage}
+            autoFocus
           />
 
           <TouchableOpacity

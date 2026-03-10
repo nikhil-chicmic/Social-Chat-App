@@ -243,6 +243,17 @@ const MessageScreen = () => {
           fetchConversations();
         },
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversations",
+        },
+        () => {
+          fetchConversations();
+        },
+      )
       .subscribe();
 
     return () => {
