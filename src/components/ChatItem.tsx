@@ -35,15 +35,6 @@ export default function ChatItem({
                 {time}
               </Text>
             ) : null}
-            {onDelete ? (
-              <TouchableOpacity
-                onPress={onDelete}
-                style={styles.deleteBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="trash-outline" size={18} color={"red"} />
-              </TouchableOpacity>
-            ) : null}
           </View>
         </View>
 
@@ -54,6 +45,16 @@ export default function ChatItem({
           {message}
         </Text>
       </View>
+
+      {onDelete ? (
+        <TouchableOpacity
+          onPress={onDelete}
+          style={styles.deleteBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="trash-outline" size={20} color={"red"} />
+        </TouchableOpacity>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -122,6 +123,7 @@ const styles = StyleSheet.create({
     backgroundColor: DarkTheme.PRIMARY_BUTTON, // Use primary theme color
   },
   deleteBtn: {
-    marginLeft: 4,
+    marginLeft: 12,
+    justifyContent: "center",
   },
 });

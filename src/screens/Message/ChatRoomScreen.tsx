@@ -35,7 +35,6 @@ export default function ChatRoomScreen() {
   useEffect(() => {
     if (conversationId) {
       loadMessages();
-      updateReadReceipt();
       const channel = subscribeRealtime();
 
       return () => {
@@ -44,11 +43,11 @@ export default function ChatRoomScreen() {
     }
   }, [conversationId]);
 
-  const updateReadReceipt = async () => {
+  const updateReadReceipt = async (timestamp?: number) => {
     try {
       const raw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
       const cache = raw ? JSON.parse(raw) : {};
-      cache[conversationId] = Date.now();
+      cache[conversationId] = timestamp || Date.now();
       await AsyncStorage.setItem("READ_RECEIPTS_CACHE", JSON.stringify(cache));
     } catch (err) {
       console.error("Failed to update read receipt:", err);
@@ -72,6 +71,13 @@ export default function ChatRoomScreen() {
       }
 
       setMessages(data || []);
+
+      if (data && data.length > 0) {
+        const latestMsg = data[data.length - 1];
+        updateReadReceipt(new Date(latestMsg.created_at).getTime());
+      } else {
+        updateReadReceipt(Date.now());
+      }
 
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: false });
@@ -100,7 +106,7 @@ export default function ChatRoomScreen() {
             return [...prev, payload.new];
           });
 
-          updateReadReceipt();
+          updateReadReceipt(new Date(payload.new.created_at).getTime());
 
           setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: true });

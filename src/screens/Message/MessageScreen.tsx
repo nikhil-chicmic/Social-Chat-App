@@ -232,6 +232,17 @@ const MessageScreen = () => {
           fetchConversations();
         },
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "conversations",
+        },
+        () => {
+          fetchConversations();
+        },
+      )
       .subscribe();
 
     return () => {
