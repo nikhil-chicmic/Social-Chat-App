@@ -7,6 +7,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  DeviceEventEmitter,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
@@ -101,6 +102,7 @@ const PostScreen = ({ route, navigation }: any) => {
       if (!error) {
         setLiked(false);
         setLikesCount((prev: number) => Math.max(prev - 1, 0));
+        DeviceEventEmitter.emit("post_unliked", post.id);
       }
     } else {
       const { error } = await supabase.from("likes").insert({
@@ -140,6 +142,7 @@ const PostScreen = ({ route, navigation }: any) => {
 
       if (!error) {
         setSaved(false);
+        DeviceEventEmitter.emit("post_unsaved", post.id);
       }
     } else {
       const { error } = await supabase.from("saved_posts").insert({

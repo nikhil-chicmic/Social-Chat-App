@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, StyleSheet, Text, TouchableOpacity, View, DeviceEventEmitter } from "react-native";
 import { supabase } from "../../lib/supabase";
 
 const blankProfile = require("../../assets/BlankProfile.png");
@@ -119,6 +119,7 @@ const Post = ({ post, refreshPosts }: Props) => {
       if (!error) {
         setLiked(false);
         setLikesCount((prev) => Math.max(prev - 1, 0));
+        DeviceEventEmitter.emit("post_unliked", post.id);
         if (refreshPosts) refreshPosts();
       }
     } else {
@@ -161,6 +162,7 @@ const Post = ({ post, refreshPosts }: Props) => {
 
       if (!error) {
         setSaved(false);
+        DeviceEventEmitter.emit("post_unsaved", post.id);
       }
     } else {
       const { error } = await supabase.from("saved_posts").insert({

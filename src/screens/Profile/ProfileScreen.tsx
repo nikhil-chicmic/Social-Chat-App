@@ -1,6 +1,6 @@
 import { useFocusEffect } from "@react-navigation/native";
-import React, { useCallback, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import React, { useCallback, useState, useEffect } from "react";
+import { ScrollView, StyleSheet, View, DeviceEventEmitter } from "react-native";
 import { supabase } from "../../../lib/supabase";
 import Header from "./Header";
 import PostsGrid from "./PostsGrid";
@@ -51,6 +51,25 @@ const ProfileScreen = () => {
       fetchPosts();
     }, [activeTab]),
   );
+
+  useEffect(() => {
+    const unlikeListener = DeviceEventEmitter.addListener("post_unliked", (postId: string) => {
+      if (activeTab === "likes") {
+        setPosts((currentPosts) => currentPosts.filter((p) => p.id !== postId));
+      }
+    });
+
+    const unsaveListener = DeviceEventEmitter.addListener("post_unsaved", (postId: string) => {
+      if (activeTab === "save") {
+        setPosts((currentPosts) => currentPosts.filter((p) => p.id !== postId));
+      }
+    });
+
+    return () => {
+      unlikeListener.remove();
+      unsaveListener.remove();
+    };
+  }, [activeTab]);
 
   return (
     <View style={styles.container}>
