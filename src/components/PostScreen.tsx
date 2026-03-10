@@ -33,6 +33,7 @@ const PostScreen = ({ route, navigation }: any) => {
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     checkLikeStatus();
@@ -246,10 +247,27 @@ const PostScreen = ({ route, navigation }: any) => {
 
       <Text style={styles.likesText}>{likesCount.toLocaleString()} likes</Text>
 
-      {post?.caption ? (
+      {post.caption ? (
         <Text style={styles.caption}>
           <Text style={styles.username}>{username} </Text>
-          {post.caption}
+
+          {expanded || post.caption.length <= 100 ? (
+            <>
+              {post.caption}
+              {post.caption.length > 100 && (
+                <TouchableOpacity onPress={() => setExpanded(false)}>
+                  <Text style={{ color: "#999" }}> less</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <>
+              {post.caption.slice(0, 100)}
+              <TouchableOpacity onPress={() => setExpanded(true)}>
+                <Text style={{ color: "#999" }}>...more</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </Text>
       ) : null}
 

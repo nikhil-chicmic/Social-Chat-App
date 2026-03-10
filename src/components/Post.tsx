@@ -237,11 +237,24 @@ const Post = ({ post, refreshPosts }: Props) => {
           <Text style={styles.username}>{username} </Text>
 
           {expanded || post.caption.length <= 100 ? (
-            post.caption
+            <>
+              {post.caption}
+              {post.caption.length > 100 && (
+                <TouchableOpacity
+                  style={{ position: "relative", top: 4 }}
+                  onPress={() => setExpanded(false)}
+                >
+                  <Text style={{ color: "#999" }}> less</Text>
+                </TouchableOpacity>
+              )}
+            </>
           ) : (
             <>
               {post.caption.slice(0, 100)}
-              <TouchableOpacity onPress={() => setExpanded(true)}>
+              <TouchableOpacity
+                onPress={() => setExpanded(true)}
+                style={{ position: "relative", top: 4 }}
+              >
                 <Text style={{ color: "#999" }}>...more</Text>
               </TouchableOpacity>
             </>
