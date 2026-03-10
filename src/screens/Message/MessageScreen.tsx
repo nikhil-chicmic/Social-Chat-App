@@ -4,7 +4,6 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useContext, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Text,
   TouchableOpacity,
@@ -34,10 +33,10 @@ const MessageScreen = () => {
     }
   };
 
-  const fetchConversations = async () => {
+  const fetchConversations = async (showLoading = true) => {
     if (!user?.id) return;
 
-    setLoading(true);
+    if (showLoading) setLoading(true);
 
     try {
       const { data: myParticipations, error: partError } = await supabase
@@ -51,7 +50,7 @@ const MessageScreen = () => {
 
       if (!myParticipations || myParticipations.length === 0) {
         setConversations([]);
-        setLoading(false);
+        if (showLoading) setLoading(false);
         return;
       }
 
@@ -102,7 +101,7 @@ const MessageScreen = () => {
 
       if (otherUserIds.length === 0) {
         setConversations([]);
-        setLoading(false);
+        if (showLoading) setLoading(false);
         return;
       }
 
@@ -148,7 +147,7 @@ const MessageScreen = () => {
       console.error("fetchConversations error:", err);
     }
 
-    setLoading(false);
+    if (showLoading) setLoading(false);
   };
 
   const formatTimestamp = (dateStr: string) => {
@@ -170,49 +169,9 @@ const MessageScreen = () => {
     });
   };
 
-  const confirmDeleteChat = (conversationId: string) => {
-    Alert.alert(
-      "Delete Chat",
-      "Are you sure you want to delete?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => handleDeleteChat(conversationId),
-        },
-      ],
-      { cancelable: true },
-    );
-  };
-
-  const handleDeleteChat = async (conversationId: string) => {
-    if (!user?.id) return;
-
-    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
-
-    const { error } = await supabase
-      .from("conversations")
-      .delete()
-      .eq("id", conversationId);
-
-    if (error) {
-      console.error("Delete chat error:", error);
-      return;
-    }
-
-    const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
-    if (!raw) return;
-
-    const cache = JSON.parse(raw);
-    delete cache[conversationId];
-
-    await AsyncStorage.setItem(CONV_CACHE_KEY, JSON.stringify(cache));
-  };
-
   useFocusEffect(
     useCallback(() => {
-      fetchConversations();
+      fetchConversations(true);
     }, [user?.id]),
   );
 
@@ -223,25 +182,18 @@ const MessageScreen = () => {
       .channel("message-list-updates")
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-        },
-        () => {
-          fetchConversations();
-        },
+        { event: "*", schema: "public", table: "messages" },
+        () => fetchConversations(false),
       )
       .on(
         "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "conversations",
-        },
-        () => {
-          fetchConversations();
-        },
+        { event: "*", schema: "public", table: "conversations" },
+        () => fetchConversations(false),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "conversation_participants" },
+        () => fetchConversations(false),
       )
       .subscribe();
 
@@ -315,7 +267,6 @@ const MessageScreen = () => {
                 message={item.lastMessage}
                 time={item.time}
                 isUnread={item.isUnread}
-                onDelete={() => confirmDeleteChat(item.id)}
                 onPress={() =>
                   navigation.navigate("ChatRoom", {
                     conversationId: item.id,
