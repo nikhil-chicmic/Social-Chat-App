@@ -95,37 +95,45 @@ export default function ChatRoomScreen() {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === payload.new.id)) return prev;
-            return [...prev, payload.new];
-          });
+          if (
+            payload.eventType === "INSERT" &&
+            payload.new.conversation_id === conversationId
+          ) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === payload.new.id)) return prev;
+              return [...prev, payload.new];
+            });
 
-          updateReadReceipt(new Date(payload.new.created_at).getTime());
+            updateReadReceipt(new Date(payload.new.created_at).getTime());
 
-          setTimeout(() => {
-            flatListRef.current?.scrollToEnd({ animated: true });
-          }, 100);
+            setTimeout(() => {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }, 100);
+          }
         },
       )
       .on(
         "postgres_changes",
         {
-          event: "DELETE",
+          event: "*",
           schema: "public",
           table: "conversations",
-          filter: `id=eq.${conversationId}`,
         },
-        () => {
-          if (navigation.canGoBack()) {
-            navigation.goBack();
-          } else {
-            navigation.navigate("Message");
+        (payload) => {
+          if (
+            payload.eventType === "DELETE" &&
+            payload.old.id === conversationId
+          ) {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            } else {
+              navigation.navigate("Message");
+            }
           }
         },
       )
