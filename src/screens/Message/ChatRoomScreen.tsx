@@ -139,16 +139,32 @@ export default function ChatRoomScreen() {
     setInputText("");
 
     try {
-      const { error } = await supabase.from("messages").insert({
-        conversation_id: conversationId,
-        sender_id: user?.id,
-        content: messageText,
-      });
+      const { data, error } = await supabase
+        .from("messages")
+        .insert({
+          conversation_id: conversationId,
+          sender_id: user?.id,
+          content: messageText,
+        })
+        .select()
+        .single();
 
       if (error) {
         console.error("Send message error:", error);
         return;
       }
+
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === data.id)) return prev;
+        return [...prev, data];
+      });
+
+      updateReadReceipt(new Date(data.created_at).getTime());
+
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+
       await supabase
         .from("conversations")
         .update({
