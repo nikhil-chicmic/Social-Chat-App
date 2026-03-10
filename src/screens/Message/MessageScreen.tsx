@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import React, { useCallback, useContext, useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -25,6 +25,10 @@ const MessageScreen = () => {
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Guard against concurrent fetches to prevent race conditions /
+  // stale state overwrites when multiple realtime events fire rapidly.
+  const isFetchingRef = useRef(false);
+
   const loadConvCache = async (): Promise<Record<string, string>> => {
     try {
       const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
@@ -34,122 +38,134 @@ const MessageScreen = () => {
     }
   };
 
-  const fetchConversations = async (showLoading = true) => {
-    if (!user?.id) return;
+  const fetchConversations = useCallback(
+    async (showLoading = false) => {
+      if (!user?.id) return;
+      // Prevent concurrent fetches
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
 
-    if (showLoading) setLoading(true);
+      // Only show the full spinner when the list is genuinely empty
+      // (first mount or after all conversations deleted).
+      if (showLoading && conversations.length === 0) setLoading(true);
 
-    try {
-      const { data: myParticipations, error: partError } = await supabase
-        .from("conversation_participants")
-        .select("conversation_id")
-        .eq("user_id", user.id);
+      try {
+        const { data: myParticipations, error: partError } = await supabase
+          .from("conversation_participants")
+          .select("conversation_id")
+          .eq("user_id", user.id);
 
-      if (partError) {
-        console.error("Error fetching participations:", partError);
-      }
-
-      if (!myParticipations || myParticipations.length === 0) {
-        setConversations([]);
-        if (showLoading) setLoading(false);
-        return;
-      }
-
-      const conversationIds = myParticipations.map((p) => p.conversation_id);
-
-      const { data: otherParticipants } = await supabase
-        .from("conversation_participants")
-        .select("conversation_id,user_id")
-        .in("conversation_id", conversationIds)
-        .neq("user_id", user.id);
-
-      const convToOtherUserId = new Map<string, string>();
-
-      otherParticipants?.forEach((p) => {
-        convToOtherUserId.set(p.conversation_id, p.user_id);
-      });
-
-      const { data: allMessages } = await supabase
-        .from("messages")
-        .select("conversation_id,content,created_at,sender_id")
-        .in("conversation_id", conversationIds)
-        .order("created_at", { ascending: false });
-
-      allMessages?.forEach((msg) => {
-        if (
-          msg.sender_id !== user.id &&
-          !convToOtherUserId.has(msg.conversation_id)
-        ) {
-          convToOtherUserId.set(msg.conversation_id, msg.sender_id);
+        if (partError) {
+          console.error("Error fetching participations:", partError);
         }
-      });
 
-      const convCache = await loadConvCache();
-      conversationIds.forEach((convId) => {
-        if (!convToOtherUserId.has(convId) && convCache[convId]) {
-          convToOtherUserId.set(convId, convCache[convId]);
+        if (!myParticipations || myParticipations.length === 0) {
+          setConversations([]);
+          setLoading(false);
+          isFetchingRef.current = false;
+          return;
         }
-      });
 
-      const latestMsgMap = new Map<string, any>();
-      allMessages?.forEach((msg) => {
-        if (!latestMsgMap.has(msg.conversation_id)) {
-          latestMsgMap.set(msg.conversation_id, msg);
-        }
-      });
+        const conversationIds = myParticipations.map((p) => p.conversation_id);
 
-      const otherUserIds = [...new Set(convToOtherUserId.values())];
+        const { data: otherParticipants } = await supabase
+          .from("conversation_participants")
+          .select("conversation_id,user_id")
+          .in("conversation_id", conversationIds)
+          .neq("user_id", user.id);
 
-      if (otherUserIds.length === 0) {
-        setConversations([]);
-        if (showLoading) setLoading(false);
-        return;
-      }
+        const convToOtherUserId = new Map<string, string>();
 
-      const { data: users } = await supabase
-        .from("users")
-        .select("*")
-        .in("id", otherUserIds);
-
-      const usersMap = new Map<string, any>();
-      users?.forEach((u) => usersMap.set(u.id, u));
-
-      const chats: any[] = [];
-
-      const readReceiptsRaw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
-      const readReceipts = readReceiptsRaw ? JSON.parse(readReceiptsRaw) : {};
-
-      conversationIds.forEach((convId) => {
-        const otherUserId = convToOtherUserId.get(convId);
-        const otherUser = otherUserId ? usersMap.get(otherUserId) : null;
-        const latestMsg = latestMsgMap.get(convId);
-
-        if (!otherUser || !latestMsg) return;
-
-        const isMyMessage = latestMsg.sender_id === user.id;
-        const msgTime = new Date(latestMsg.created_at).getTime();
-        const lastRead = readReceipts[convId] || 0;
-        const isUnread = !isMyMessage && msgTime > lastRead;
-
-        chats.push({
-          id: convId,
-          otherUser,
-          lastMessage: `${isMyMessage ? "You: " : ""}${latestMsg.content}`,
-          time: formatTimestamp(latestMsg.created_at),
-          latestTimestamp: msgTime,
-          isUnread,
+        otherParticipants?.forEach((p) => {
+          convToOtherUserId.set(p.conversation_id, p.user_id);
         });
-      });
 
-      chats.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+        const { data: allMessages } = await supabase
+          .from("messages")
+          .select("conversation_id,content,created_at,sender_id")
+          .in("conversation_id", conversationIds)
+          .order("created_at", { ascending: false });
 
-      setConversations(chats);
-    } catch (err) {
-      console.error("fetchConversations error:", err);
-    }
+        allMessages?.forEach((msg) => {
+          if (
+            msg.sender_id !== user.id &&
+            !convToOtherUserId.has(msg.conversation_id)
+          ) {
+            convToOtherUserId.set(msg.conversation_id, msg.sender_id);
+          }
+        });
 
-    if (showLoading) setLoading(false);
-  };
+        const convCache = await loadConvCache();
+        conversationIds.forEach((convId) => {
+          if (!convToOtherUserId.has(convId) && convCache[convId]) {
+            convToOtherUserId.set(convId, convCache[convId]);
+          }
+        });
+
+        const latestMsgMap = new Map<string, any>();
+        allMessages?.forEach((msg) => {
+          if (!latestMsgMap.has(msg.conversation_id)) {
+            latestMsgMap.set(msg.conversation_id, msg);
+          }
+        });
+
+        const otherUserIds = [...new Set(convToOtherUserId.values())];
+
+        if (otherUserIds.length === 0) {
+          setConversations([]);
+          setLoading(false);
+          isFetchingRef.current = false;
+          return;
+        }
+
+        const { data: users } = await supabase
+          .from("users")
+          .select("*")
+          .in("id", otherUserIds);
+
+        const usersMap = new Map<string, any>();
+        users?.forEach((u) => usersMap.set(u.id, u));
+
+        const chats: any[] = [];
+
+        const readReceiptsRaw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
+        const readReceipts = readReceiptsRaw ? JSON.parse(readReceiptsRaw) : {};
+
+        conversationIds.forEach((convId) => {
+          const otherUserId = convToOtherUserId.get(convId);
+          const otherUser = otherUserId ? usersMap.get(otherUserId) : null;
+          const latestMsg = latestMsgMap.get(convId);
+
+          if (!otherUser || !latestMsg) return;
+
+          const isMyMessage = latestMsg.sender_id === user.id;
+          const msgTime = new Date(latestMsg.created_at).getTime();
+          const lastRead = readReceipts[convId] || 0;
+          const isUnread = !isMyMessage && msgTime > lastRead;
+
+          chats.push({
+            id: convId,
+            otherUser,
+            lastMessage: `${isMyMessage ? "You: " : ""}${latestMsg.content}`,
+            time: formatTimestamp(latestMsg.created_at),
+            latestTimestamp: msgTime,
+            isUnread,
+          });
+        });
+
+        chats.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+
+        setConversations(chats);
+      } catch (err) {
+        console.error("fetchConversations error:", err);
+      } finally {
+        setLoading(false);
+        isFetchingRef.current = false;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user?.id],
+  );
 
   const formatTimestamp = (dateStr: string) => {
     const now = new Date();
@@ -210,17 +226,26 @@ const MessageScreen = () => {
     await AsyncStorage.setItem(CONV_CACHE_KEY, JSON.stringify(cache));
   };
 
+  // Initial fetch with loading spinner on first mount
+  useEffect(() => {
+    fetchConversations(true);
+  }, [fetchConversations]);
+
+  // Silent refresh when screen comes back into focus (no loading spinner
+  // flash when returning from ChatRoom).
   useFocusEffect(
     useCallback(() => {
-      fetchConversations(true);
-    }, [user?.id]),
+      fetchConversations(false);
+    }, [fetchConversations]),
   );
 
+  // Realtime subscription — updates the list whenever messages or
+  // conversations change for ANY of the user's conversations.
   useEffect(() => {
     if (!user?.id) return;
 
     const channel = supabase
-      .channel("message-list-updates")
+      .channel(`message-list-${user.id}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "messages" },
@@ -241,7 +266,7 @@ const MessageScreen = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [user?.id, fetchConversations]);
 
   return (
     <SafeAreaView
