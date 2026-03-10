@@ -37,7 +37,6 @@ export default function ChatRoomScreen() {
   const [loadingMessages, setLoadingMessages] = useState(true);
 
   const flatListRef = useRef<FlatList>(null);
-  // true until the initial batch of messages has been scrolled into view
   const isInitialLoad = useRef(true);
 
   const updateReadReceipt = useCallback(
@@ -61,11 +60,9 @@ export default function ChatRoomScreen() {
     flatListRef.current?.scrollToEnd({ animated });
   }, []);
 
-  // On initial load scroll instantly; for new realtime messages scroll smoothly.
   const handleContentSizeChange = useCallback(() => {
     if (isInitialLoad.current) {
       scrollToBottom(false);
-      // Mark initial load done — next content changes animate smoothly
       isInitialLoad.current = false;
     } else {
       scrollToBottom(true);
@@ -75,7 +72,6 @@ export default function ChatRoomScreen() {
   useEffect(() => {
     if (!conversationId) return;
 
-    // Reset for each new conversation so we always jump to the bottom instantly
     isInitialLoad.current = true;
 
     loadMessages();
@@ -103,7 +99,6 @@ export default function ChatRoomScreen() {
 
       setMessages(data || []);
 
-      // Update read receipt so the unread dot clears when going back
       if (data && data.length > 0) {
         const last = data[data.length - 1];
         updateReadReceipt(new Date(last.created_at).getTime());
@@ -132,9 +127,7 @@ export default function ChatRoomScreen() {
           setMessages((prev) => [...prev, payload.new]);
           // Keep the read receipt up-to-date so the unread badge
           // doesn't reappear when navigating back to MessageScreen
-          updateReadReceipt(
-            new Date(payload.new.created_at).getTime(),
-          );
+          updateReadReceipt(new Date(payload.new.created_at).getTime());
         },
       )
       .subscribe((status) => {

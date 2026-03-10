@@ -226,7 +226,6 @@ const MessageScreen = () => {
             );
 
             if (index === -1) {
-              // conversation not in list yet — do a full re-fetch
               doFetch(false);
               return prev;
             }
@@ -241,9 +240,6 @@ const MessageScreen = () => {
               lastMessage: `${isMyMessage ? "You: " : ""}${newMsg.content}`,
               time: formatTimestamp(newMsg.created_at),
               latestTimestamp: msgTime,
-              // Always flag as unread when the other person sends a message.
-              // The useFocusEffect re-fetch clears the badge when the user
-              // returns from ChatRoomScreen (which updates READ_RECEIPTS_CACHE).
               isUnread: !isMyMessage,
             };
 
