@@ -117,9 +117,6 @@ export default function ChatRoomScreen() {
         },
         (payload) => {
           setMessages((prev) => [...prev, payload.new]);
-
-          updateReadReceipt(new Date(payload.new.created_at).getTime());
-
           setTimeout(() => scrollToBottom(true), 50);
         },
       )
@@ -137,26 +134,16 @@ export default function ChatRoomScreen() {
     setInputText("");
 
     try {
-      const { data, error } = await supabase
-        .from("messages")
-        .insert({
-          conversation_id: conversationId,
-          sender_id: user?.id,
-          content: messageText,
-        })
-        .select()
-        .single();
+      const { error } = await supabase.from("messages").insert({
+        conversation_id: conversationId,
+        sender_id: user?.id,
+        content: messageText,
+      });
 
       if (error) {
         console.error(error);
         return;
       }
-
-      setMessages((prev) => [...prev, data]);
-
-      updateReadReceipt(new Date(data.created_at).getTime());
-
-      setTimeout(() => scrollToBottom(true), 50);
 
       await supabase
         .from("conversations")
