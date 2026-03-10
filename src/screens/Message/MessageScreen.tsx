@@ -34,10 +34,10 @@ const MessageScreen = () => {
     }
   };
 
-  const fetchConversations = async (showLoading = true) => {
+  const fetchConversations = async () => {
     if (!user?.id) return;
 
-    if (showLoading) setLoading(true);
+    setLoading(true);
 
     try {
       const { data: myParticipations, error: partError } = await supabase
@@ -51,7 +51,7 @@ const MessageScreen = () => {
 
       if (!myParticipations || myParticipations.length === 0) {
         setConversations([]);
-        if (showLoading) setLoading(false);
+        setLoading(false);
         return;
       }
 
@@ -102,7 +102,7 @@ const MessageScreen = () => {
 
       if (otherUserIds.length === 0) {
         setConversations([]);
-        if (showLoading) setLoading(false);
+        setLoading(false);
         return;
       }
 
@@ -148,7 +148,7 @@ const MessageScreen = () => {
       console.error("fetchConversations error:", err);
     }
 
-    if (showLoading) setLoading(false);
+    setLoading(false);
   };
 
   const formatTimestamp = (dateStr: string) => {
@@ -212,7 +212,7 @@ const MessageScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      fetchConversations(true);
+      fetchConversations();
     }, [user?.id]),
   );
 
@@ -223,18 +223,36 @@ const MessageScreen = () => {
       .channel("message-list-updates")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "messages" },
-        () => fetchConversations(false),
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+        },
+        () => {
+          fetchConversations();
+        },
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "conversations" },
-        () => fetchConversations(false),
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "conversations",
+        },
+        () => {
+          fetchConversations();
+        },
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "conversation_participants" },
-        () => fetchConversations(false),
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversations",
+        },
+        () => {
+          fetchConversations();
+        },
       )
       .subscribe();
 
