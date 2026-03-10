@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, {
   useCallback,
   useContext,
@@ -10,353 +10,373 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../../lib/supabase";
+import ChatItem from "../../components/ChatItem";
 import AuthContext from "../../navigation/AuthContext";
 import { DarkTheme } from "../../theme/DarkTheme";
+import { styles } from "./styles";
 
-export default function ChatRoomScreen() {
-  const route = useRoute<any>();
+const CONV_CACHE_KEY = "chat_conversation_cache";
+
+const MessageScreen = () => {
   const navigation = useNavigation<any>();
   const { user } = useContext(AuthContext);
 
-  const { conversationId, otherUser } = route.params;
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [messages, setMessages] = useState<any[]>([]);
-  const [inputText, setInputText] = useState("");
-  const [loadingMessages, setLoadingMessages] = useState(true);
-
-  const flatListRef = useRef<FlatList>(null);
-
-  const updateReadReceipt = useCallback(
-    async (timestamp?: number) => {
-      try {
-        const raw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
-        const cache = raw ? JSON.parse(raw) : {};
-        cache[conversationId] = timestamp || Date.now();
-        await AsyncStorage.setItem(
-          "READ_RECEIPTS_CACHE",
-          JSON.stringify(cache),
-        );
-      } catch (err) {
-        console.error("Read receipt error:", err);
-      }
-    },
-    [conversationId],
-  );
-
-  const scrollToBottom = useCallback((animated = true) => {
-    flatListRef.current?.scrollToEnd({ animated });
-  }, []);
+  const conversationsRef = useRef<any[]>([]);
+  const realtimeChannelRef = useRef<any>(null);
 
   useEffect(() => {
-    if (!conversationId) return;
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
-    loadMessages();
-    scrollToBottom();
-    const channel = subscribeRealtime();
+  const loadConvCache = async (): Promise<Record<string, string>> => {
+    try {
+      const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  };
 
-    return () => {
-      channel.unsubscribe();
-    };
-  }, [conversationId]);
+  const formatTimestamp = (dateStr: string) => {
+    const now = new Date();
+    const date = new Date(dateStr);
 
-  async function loadMessages() {
-    setLoadingMessages(true);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "now";
+    if (diffMins < 60) return `${diffMins}m`;
+    if (diffHours < 24) return `${diffHours}h`;
+    if (diffDays < 7) return `${diffDays}d`;
+
+    return date.toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const doFetch = async (showLoader = true) => {
+    if (!user?.id) return;
+
+    if (showLoader) setLoading(true);
 
     try {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
+      const { data: myParticipations } = await supabase
+        .from("conversation_participants")
+        .select("conversation_id")
+        .eq("user_id", user.id);
 
-      if (error) {
-        console.error(error);
+      if (!myParticipations || myParticipations.length === 0) {
+        setConversations([]);
+        if (showLoader) setLoading(false);
         return;
       }
 
-      setMessages(data || []);
+      const conversationIds = myParticipations.map((p) => p.conversation_id);
 
-      setTimeout(() => {
-        scrollToBottom(false);
-      }, 100);
+      const { data: otherParticipants } = await supabase
+        .from("conversation_participants")
+        .select("conversation_id,user_id")
+        .in("conversation_id", conversationIds)
+        .neq("user_id", user.id);
 
-      if (data && data.length > 0) {
-        const last = data[data.length - 1];
-        updateReadReceipt(new Date(last.created_at).getTime());
-      } else {
-        updateReadReceipt(Date.now());
-      }
+      const convToOtherUserId = new Map<string, string>();
+
+      otherParticipants?.forEach((p) => {
+        convToOtherUserId.set(p.conversation_id, p.user_id);
+      });
+
+      const { data: allMessages } = await supabase
+        .from("messages")
+        .select("conversation_id,content,created_at,sender_id")
+        .in("conversation_id", conversationIds)
+        .order("created_at", { ascending: false });
+
+      allMessages?.forEach((msg) => {
+        if (
+          msg.sender_id !== user.id &&
+          !convToOtherUserId.has(msg.conversation_id)
+        ) {
+          convToOtherUserId.set(msg.conversation_id, msg.sender_id);
+        }
+      });
+
+      const convCache = await loadConvCache();
+
+      conversationIds.forEach((convId) => {
+        if (!convToOtherUserId.has(convId) && convCache[convId]) {
+          convToOtherUserId.set(convId, convCache[convId]);
+        }
+      });
+
+      const latestMsgMap = new Map<string, any>();
+
+      allMessages?.forEach((msg) => {
+        if (!latestMsgMap.has(msg.conversation_id)) {
+          latestMsgMap.set(msg.conversation_id, msg);
+        }
+      });
+
+      const otherUserIds = [...new Set(convToOtherUserId.values())];
+
+      const { data: users } = await supabase
+        .from("users")
+        .select("*")
+        .in("id", otherUserIds);
+
+      const usersMap = new Map<string, any>();
+      users?.forEach((u) => usersMap.set(u.id, u));
+
+      const readReceiptsRaw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
+      const readReceipts = readReceiptsRaw ? JSON.parse(readReceiptsRaw) : {};
+
+      const chats: any[] = [];
+
+      conversationIds.forEach((convId) => {
+        const otherUserId = convToOtherUserId.get(convId);
+        const otherUser = otherUserId ? usersMap.get(otherUserId) : null;
+        const latestMsg = latestMsgMap.get(convId);
+
+        if (!otherUser || !latestMsg) return;
+
+        const isMyMessage = latestMsg.sender_id === user.id;
+        const msgTime = new Date(latestMsg.created_at).getTime();
+        const lastRead = readReceipts[convId] || 0;
+
+        chats.push({
+          id: convId,
+          otherUser,
+          lastMessage: `${isMyMessage ? "You: " : ""}${latestMsg.content}`,
+          time: formatTimestamp(latestMsg.created_at),
+          latestTimestamp: msgTime,
+          isUnread: !isMyMessage && msgTime > lastRead,
+        });
+      });
+
+      chats.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+
+      setConversations(chats);
     } catch (err) {
-      console.error(err);
+      console.error("fetchConversations error:", err);
     }
 
-    setLoadingMessages(false);
-  }
+    if (showLoader) setLoading(false);
+  };
 
-  function subscribeRealtime() {
-    const channel = supabase
-      .channel(`chat-${conversationId}`)
+  const fetchConversations = () => doFetch(true);
+
+  const confirmDeleteChat = (conversationId: string) => {
+    Alert.alert("Delete Chat", "Are you sure you want to delete?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => handleDeleteChat(conversationId),
+      },
+    ]);
+  };
+
+  const handleDeleteChat = async (conversationId: string) => {
+    if (!user?.id) return;
+
+    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+
+    await supabase.from("conversations").delete().eq("id", conversationId);
+
+    const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
+    if (!raw) return;
+
+    const cache = JSON.parse(raw);
+    delete cache[conversationId];
+
+    await AsyncStorage.setItem(CONV_CACHE_KEY, JSON.stringify(cache));
+  };
+
+  const subscribeRealtime = () => {
+    if (!user?.id) return;
+
+    realtimeChannelRef.current = supabase
+      .channel("messages-realtime")
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
-          setTimeout(() => scrollToBottom(true), 50);
+          const newMsg: any = payload.new;
+
+          setConversations((prev) => {
+            const index = prev.findIndex(
+              (c) => c.id === newMsg.conversation_id,
+            );
+
+            if (index === -1) {
+              doFetch(false);
+              return prev;
+            }
+
+            const isMyMessage = newMsg.sender_id === user.id;
+
+            const updated = [...prev];
+
+            updated[index] = {
+              ...updated[index],
+              lastMessage: `${isMyMessage ? "You: " : ""}${newMsg.content}`,
+              time: formatTimestamp(newMsg.created_at),
+              latestTimestamp: new Date(newMsg.created_at).getTime(),
+              isUnread: !isMyMessage,
+            };
+
+            updated.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+
+            return updated;
+          });
         },
       )
-      .subscribe((status) => {
-        console.log("Realtime status:", status);
-      });
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversation_participants",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          doFetch(false);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "conversations",
+        },
+        (payload) => {
+          const deletedId: any = payload.old.id;
+          setConversations((prev) => prev.filter((c) => c.id !== deletedId));
+        },
+      )
+      .subscribe();
+  };
 
-    return channel;
-  }
-
-  async function sendMessage() {
-    if (!inputText.trim()) return;
-
-    const messageText = inputText.trim();
-    setInputText("");
-
-    try {
-      const { error } = await supabase.from("messages").insert({
-        conversation_id: conversationId,
-        sender_id: user?.id,
-        content: messageText,
-      });
-
-      if (error) {
-        console.error(error);
-        return;
-      }
-
-      await supabase
-        .from("conversations")
-        .update({
-          updated_at: new Date().toISOString(),
-          last_message: messageText,
-        })
-        .eq("id", conversationId);
-    } catch (err) {
-      console.error(err);
+  const unsubscribeRealtime = () => {
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
     }
-  }
+  };
 
-  function renderMessage({ item }: any) {
-    const isMe = item.sender_id === user?.id;
+  useFocusEffect(
+    useCallback(() => {
+      fetchConversations();
+      subscribeRealtime();
 
-    return (
-      <View
-        style={[styles.messageRow, isMe ? styles.rowRight : styles.rowLeft]}
-      >
-        {!isMe && (
-          <Image
-            source={{
-              uri: otherUser?.photo_url || "https://i.pravatar.cc/150",
-            }}
-            style={styles.avatar}
-          />
-        )}
-
-        <View
-          style={[styles.bubble, isMe ? styles.myBubble : styles.otherBubble]}
-        >
-          <Text style={[styles.messageText, { color: isMe ? "#000" : "#fff" }]}>
-            {item.content}
-          </Text>
-
-          <Text
-            style={[
-              styles.timeText,
-              { color: isMe ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.4)" },
-            ]}
-          >
-            {new Date(item.created_at).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </Text>
-        </View>
-      </View>
-    );
-  }
+      return () => {
+        unsubscribeRealtime();
+      };
+    }, [user?.id]),
+  );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
+    <SafeAreaView
+      edges={["top", "bottom"]}
+      style={{ flex: 1, backgroundColor: DarkTheme.PRIMARY_BACKGROUND }}
+    >
+      <View style={styles.header}>
         <TouchableOpacity
-          style={styles.header}
-          onPress={() => {
-            navigation.push("OtherProfile", { userId: otherUser?.id });
-          }}
+          style={styles.backIcon}
+          onPress={() => navigation.goBack()}
         >
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
-
-          <Image
-            source={{
-              uri: otherUser?.photo_url || "https://i.pravatar.cc/150",
-            }}
-            style={styles.headerAvatar}
-          />
-
-          <Text style={styles.headerName}>{otherUser?.username || "User"}</Text>
+          <Ionicons name="arrow-back" size={26} color="#fff" />
         </TouchableOpacity>
 
-        {loadingMessages ? (
-          <View style={styles.loader}>
-            <ActivityIndicator size="large" color={DarkTheme.PRIMARY_BUTTON} />
+        <Text style={styles.headerText}>Messages</Text>
+
+        <TouchableOpacity
+          style={styles.newChatIcon}
+          onPress={() =>
+            navigation.navigate("Main", {
+              screen: "Search",
+            })
+          }
+        >
+          <Ionicons name="create-outline" size={26} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.chatContainer}>
+        {loading ? (
+          <ActivityIndicator
+            size="large"
+            color={DarkTheme.PRIMARY_BUTTON}
+            style={{ marginTop: 50 }}
+          />
+        ) : conversations.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <View style={styles.emptyIconCircle}>
+              <Ionicons name="chatbubbles-outline" size={48} color="#555" />
+            </View>
+
+            <Text style={styles.emptyTitle}>Your Messages</Text>
+
+            <Text style={styles.emptyText}>
+              Connect with friends and start a conversation.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.findFriendsButton}
+              onPress={() =>
+                navigation.navigate("Main", {
+                  screen: "Search",
+                })
+              }
+            >
+              <Text style={styles.findFriendsText}>Find Friends</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={renderMessage}
-            contentContainerStyle={{ padding: 16 }}
+            bounces={false}
+            data={conversations}
+            keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <ChatItem
+                username={item.otherUser.username}
+                avatar={item.otherUser.photo_url || "https://i.pravatar.cc/140"}
+                message={item.lastMessage}
+                time={item.time}
+                isUnread={item.isUnread}
+                onDelete={() => confirmDeleteChat(item.id)}
+                onPress={() =>
+                  navigation.navigate("ChatRoom", {
+                    conversationId: item.id,
+                    otherUser: item.otherUser,
+                  })
+                }
+              />
+            )}
           />
         )}
-
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.input}
-            value={inputText}
-            placeholder="Message..."
-            placeholderTextColor="#888"
-            onChangeText={setInputText}
-            onSubmitEditing={sendMessage}
-            multiline
-          />
-
-          <TouchableOpacity
-            onPress={sendMessage}
-            disabled={!inputText.trim()}
-            style={[styles.sendButton, { opacity: inputText.trim() ? 1 : 0.4 }]}
-          >
-            <Ionicons name="send" size={18} color="#000" />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
-}
+};
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: DarkTheme.PRIMARY_BACKGROUND,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#222",
-  },
-  headerAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    marginLeft: 12,
-    marginRight: 10,
-  },
-  headerName: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  messageRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    marginBottom: 10,
-  },
-  rowRight: {
-    justifyContent: "flex-end",
-  },
-  rowLeft: {
-    justifyContent: "flex-start",
-  },
-  avatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    marginRight: 8,
-  },
-  bubble: {
-    maxWidth: "75%",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
-  },
-  myBubble: {
-    backgroundColor: DarkTheme.PRIMARY_BUTTON,
-    borderBottomRightRadius: 4,
-  },
-  otherBubble: {
-    backgroundColor: "#2A2A2A",
-    borderBottomLeftRadius: 4,
-  },
-  messageText: {
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  timeText: {
-    fontSize: 11,
-    marginTop: 4,
-    textAlign: "right",
-  },
-  loader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#222",
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "#1A1A1A",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    color: "#fff",
-    fontSize: 16,
-    maxHeight: 120,
-  },
-  sendButton: {
-    marginLeft: 10,
-    backgroundColor: DarkTheme.PRIMARY_BUTTON,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-});
+export default MessageScreen;
