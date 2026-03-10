@@ -4,6 +4,7 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useContext, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Text,
   TouchableOpacity,
@@ -169,6 +170,46 @@ const MessageScreen = () => {
     });
   };
 
+  const confirmDeleteChat = (conversationId: string) => {
+    Alert.alert(
+      "Delete Chat",
+      "Are you sure you want to delete?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => handleDeleteChat(conversationId),
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
+  const handleDeleteChat = async (conversationId: string) => {
+    if (!user?.id) return;
+
+    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+
+    const { error } = await supabase
+      .from("conversations")
+      .delete()
+      .eq("id", conversationId);
+
+    if (error) {
+      console.error("Delete chat error:", error);
+      return;
+    }
+
+    const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
+    if (!raw) return;
+
+    const cache = JSON.parse(raw);
+    delete cache[conversationId];
+
+    await AsyncStorage.setItem(CONV_CACHE_KEY, JSON.stringify(cache));
+  };
+
   useFocusEffect(
     useCallback(() => {
       fetchConversations(true);
@@ -267,6 +308,7 @@ const MessageScreen = () => {
                 message={item.lastMessage}
                 time={item.time}
                 isUnread={item.isUnread}
+                onDelete={() => confirmDeleteChat(item.id)}
                 onPress={() =>
                   navigation.navigate("ChatRoom", {
                     conversationId: item.id,
