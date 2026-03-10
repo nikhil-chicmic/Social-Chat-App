@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
+import { DarkTheme } from "../theme/DarkTheme";
 import { registerForPushNotifications } from "../utils/notifications";
 import { styles } from "./Home/styles";
 
@@ -125,14 +126,29 @@ const LoginScreen = ({ navigation }: any) => {
     }
   };
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.appText}>
+    <View
+      style={{ ...styles.container, alignContent: "center", paddingTop: "30%" }}
+    >
+      <View
+        style={{
+          ...styles.header,
+          justifyContent: "center",
+          paddingBottom: "2.5%",
+        }}
+      >
+        <Text
+          style={{
+            color: DarkTheme.PRIMARY_BUTTON,
+            fontWeight: "900",
+            fontSize: 42,
+            letterSpacing: -1,
+          }}
+        >
           Social<Text style={{ color: "#fff" }}>Hub</Text>
         </Text>
       </View>
 
-      <View style={styles.card}>
+      <View style={{ ...styles.card, marginHorizontal: "5%" }}>
         <Text style={styles.title}>Welcome Back</Text>
         <Text style={styles.subtitle}>Sign in to continue</Text>
 

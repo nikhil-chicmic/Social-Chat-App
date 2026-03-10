@@ -162,6 +162,23 @@ export default function ChatRoomScreen() {
           last_message: messageText,
         })
         .eq("id", conversationId);
+
+      // Fire backend push notification via Supabase Edge Function
+      const recipientId = otherUser?.id;
+      if (recipientId) {
+        await supabase.functions.invoke("send-push", {
+          body: {
+            recipientId,
+            title: `New message from ${user?.user_metadata?.username || "Someone"}`,
+            body: messageText,
+            data: {
+              type: "message",
+              conversationId,
+              fromUserId: user?.id,
+            },
+          },
+        });
+      }
     } catch (err) {
       console.error(err);
     }
