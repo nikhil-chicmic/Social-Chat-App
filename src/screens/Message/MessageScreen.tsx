@@ -220,6 +220,15 @@ const MessageScreen = () => {
         async (payload) => {
           const newMsg = payload.new;
 
+          // Read the latest receipt timestamps so we don't mark a
+          // conversation unread if the user is currently inside it.
+          const readReceiptsRaw = await AsyncStorage.getItem(
+            "READ_RECEIPTS_CACHE",
+          );
+          const readReceipts = readReceiptsRaw
+            ? JSON.parse(readReceiptsRaw)
+            : {};
+
           setConversations((prev) => {
             const index = prev.findIndex(
               (c) => c.id === newMsg.conversation_id,
@@ -232,6 +241,8 @@ const MessageScreen = () => {
             }
 
             const isMyMessage = newMsg.sender_id === user.id;
+            const msgTime = new Date(newMsg.created_at).getTime();
+            const lastRead = readReceipts[newMsg.conversation_id] || 0;
 
             const updated = [...prev];
 
@@ -239,8 +250,8 @@ const MessageScreen = () => {
               ...updated[index],
               lastMessage: `${isMyMessage ? "You: " : ""}${newMsg.content}`,
               time: formatTimestamp(newMsg.created_at),
-              latestTimestamp: new Date(newMsg.created_at).getTime(),
-              isUnread: !isMyMessage,
+              latestTimestamp: msgTime,
+              isUnread: !isMyMessage && msgTime > lastRead,
             };
 
             updated.sort((a, b) => b.latestTimestamp - a.latestTimestamp);

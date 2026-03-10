@@ -37,6 +37,8 @@ export default function ChatRoomScreen() {
   const [loadingMessages, setLoadingMessages] = useState(true);
 
   const flatListRef = useRef<FlatList>(null);
+  // true until the initial batch of messages has been scrolled into view
+  const isInitialLoad = useRef(true);
 
   const updateReadReceipt = useCallback(
     async (timestamp?: number) => {
@@ -59,8 +61,22 @@ export default function ChatRoomScreen() {
     flatListRef.current?.scrollToEnd({ animated });
   }, []);
 
+  // On initial load scroll instantly; for new realtime messages scroll smoothly.
+  const handleContentSizeChange = useCallback(() => {
+    if (isInitialLoad.current) {
+      scrollToBottom(false);
+      // Mark initial load done — next content changes animate smoothly
+      isInitialLoad.current = false;
+    } else {
+      scrollToBottom(true);
+    }
+  }, [scrollToBottom]);
+
   useEffect(() => {
     if (!conversationId) return;
+
+    // Reset for each new conversation so we always jump to the bottom instantly
+    isInitialLoad.current = true;
 
     loadMessages();
     const channel = subscribeRealtime();
@@ -87,14 +103,10 @@ export default function ChatRoomScreen() {
 
       setMessages(data || []);
 
-      setTimeout(() => {
-        scrollToBottom(false);
-      }, 100);
-
+      // Update read receipt so the unread dot clears when going back
       if (data && data.length > 0) {
         const last = data[data.length - 1];
         updateReadReceipt(new Date(last.created_at).getTime());
-        scrollToBottom();
       } else {
         updateReadReceipt(Date.now());
       }
@@ -117,52 +129,39 @@ export default function ChatRoomScreen() {
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          const newMsg = payload.new;
-
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
-
-          setTimeout(() => scrollToBottom(true), 50);
+          setMessages((prev) => [...prev, payload.new]);
+          // Keep the read receipt up-to-date so the unread badge
+          // doesn't reappear when navigating back to MessageScreen
+          updateReadReceipt(
+            new Date(payload.new.created_at).getTime(),
+          );
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Realtime status:", status);
+      });
 
     return channel;
   }
 
   async function sendMessage() {
-    if (!inputText.trim() || !user?.id) return;
+    if (!inputText.trim()) return;
 
     const messageText = inputText.trim();
     setInputText("");
 
-    const newMessage = {
-      conversation_id: conversationId,
-      sender_id: user.id,
-      content: messageText,
-      created_at: new Date().toISOString(),
-    };
-
     try {
-      const { data, error } = await supabase
-        .from("messages")
-        .insert(newMessage)
-        .select()
-        .single();
+      const { error } = await supabase.from("messages").insert({
+        conversation_id: conversationId,
+        sender_id: user?.id,
+        content: messageText,
+      });
 
       if (error) {
-        console.error("Send message error:", error);
+        console.error(error);
         return;
       }
 
-      // optimistic UI update
-      setMessages((prev) => [...prev, data]);
-
-      setTimeout(() => scrollToBottom(true), 50);
-
-      // update conversation preview metadata
       await supabase
         .from("conversations")
         .update({
@@ -171,7 +170,7 @@ export default function ChatRoomScreen() {
         })
         .eq("id", conversationId);
     } catch (err) {
-      console.error("Send message exception:", err);
+      console.error(err);
     }
   }
 
@@ -252,6 +251,8 @@ export default function ChatRoomScreen() {
             renderItem={renderMessage}
             contentContainerStyle={{ padding: 16 }}
             showsVerticalScrollIndicator={false}
+            onContentSizeChange={handleContentSizeChange}
+            onLayout={handleContentSizeChange}
           />
         )}
 
