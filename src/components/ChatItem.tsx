@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { DarkTheme } from "../theme/DarkTheme";
@@ -45,16 +44,6 @@ export default function ChatItem({
           {message}
         </Text>
       </View>
-
-      {onDelete ? (
-        <TouchableOpacity
-          onPress={onDelete}
-          style={styles.deleteBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="trash-outline" size={20} color={"red"} />
-        </TouchableOpacity>
-      ) : null}
     </TouchableOpacity>
   );
 }
