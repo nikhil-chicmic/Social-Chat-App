@@ -8,9 +8,7 @@ type FcmServiceAccount = {
   private_key: string;
 };
 
-async function getFcmAccessToken(
-  sa: FcmServiceAccount,
-): Promise<string> {
+async function getFcmAccessToken(sa: FcmServiceAccount): Promise<string> {
   const header = {
     alg: "RS256",
     typ: "JWT",
@@ -28,11 +26,7 @@ async function getFcmAccessToken(
 
   const encoder = new TextEncoder();
   const base64UrlEncode = (obj: unknown) =>
-    btoa(
-      String.fromCharCode(
-        ...encoder.encode(JSON.stringify(obj)),
-      ),
-    )
+    btoa(String.fromCharCode(...encoder.encode(JSON.stringify(obj))))
       .replace(/\+/g, "-")
       .replace(/\//g, "_")
       .replace(/=+$/g, "");
@@ -125,15 +119,13 @@ serve(async (req: Request): Promise<Response> => {
 
     const accessToken = await getFcmAccessToken(serviceAccount);
 
-    const fcmUrl =
-      `https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`;
+    const fcmUrl = `https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Column still named expo_push_token, but it now stores the FCM device token
     const { data: user, error } = await supabase
       .from("users")
       .select("expo_push_token")

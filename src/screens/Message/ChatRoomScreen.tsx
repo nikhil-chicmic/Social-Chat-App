@@ -56,19 +56,6 @@ export default function ChatRoomScreen() {
     [conversationId],
   );
 
-  const scrollToBottom = useCallback((animated = true) => {
-    flatListRef.current?.scrollToEnd({ animated });
-  }, []);
-
-  const handleContentSizeChange = useCallback(() => {
-    if (isInitialLoad.current) {
-      scrollToBottom(false);
-      isInitialLoad.current = false;
-    } else {
-      scrollToBottom(true);
-    }
-  }, [scrollToBottom]);
-
   useEffect(() => {
     if (!conversationId) return;
 
@@ -141,6 +128,17 @@ export default function ChatRoomScreen() {
     const messageText = inputText.trim();
     setInputText("");
 
+    const senderName =
+      (user?.user_metadata as any)?.username ||
+      (user?.user_metadata as any)?.full_name ||
+      user?.email?.split("@")[0] ||
+      "Someone";
+
+    const messagePreview =
+      messageText.length > 80
+        ? `${messageText.slice(0, 77)}...`
+        : messageText;
+
     const { error } = await supabase.from("messages").insert({
       conversation_id: conversationId,
       sender_id: user?.id,
@@ -158,14 +156,13 @@ export default function ChatRoomScreen() {
       const { data, error } = await supabase.functions.invoke("send-push", {
         body: {
           recipientId,
-          title: `New message from ${
-            user?.user_metadata?.username || "Someone"
-          }`,
-          body: messageText,
+          title: `New message from ${senderName}`,
+          body: messagePreview,
           data: {
             type: "message",
             conversationId,
             fromUserId: user?.id,
+            senderName,
           },
         },
       });
@@ -256,13 +253,12 @@ export default function ChatRoomScreen() {
         ) : (
           <FlatList
             ref={flatListRef}
-            data={messages}
+            data={[...messages].reverse()} // newest at bottom, like Instagram
+            inverted
             keyExtractor={(item) => item.id.toString()}
             renderItem={renderMessage}
             contentContainerStyle={{ padding: 16 }}
             showsVerticalScrollIndicator={false}
-            onContentSizeChange={handleContentSizeChange}
-            onLayout={handleContentSizeChange}
           />
         )}
 
