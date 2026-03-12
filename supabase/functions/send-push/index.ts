@@ -144,7 +144,6 @@ serve(async (req: Request): Promise<Response> => {
 
     const fcmToken = user.expo_push_token as string;
 
-    // Try to fetch sender profile image so we can show it in the notification (Instagram-style)
     let senderImageUrl: string | null = null;
     const senderId = (data as any)?.fromUserId;
     if (senderId) {
@@ -165,7 +164,6 @@ serve(async (req: Request): Promise<Response> => {
         notification: {
           title: title ?? "SocialHub",
           body: messageBody ?? "New notification",
-          // Large image in supported notification UIs
           image: senderImageUrl ?? undefined,
         },
         android: {
@@ -182,8 +180,6 @@ serve(async (req: Request): Promise<Response> => {
     };
 
     console.log("Sending FCM v1 push to token:", fcmToken);
-
-    // Await FCM request so the function reliably reports status
     const res = await fetch(fcmUrl, {
       method: "POST",
       headers: {
@@ -196,9 +192,7 @@ serve(async (req: Request): Promise<Response> => {
     let json: unknown = null;
     try {
       json = await res.json();
-    } catch {
-      // ignore JSON parse errors
-    }
+    } catch {}
     console.log("FCM v1 status:", res.status, "response:", json);
 
     return new Response(

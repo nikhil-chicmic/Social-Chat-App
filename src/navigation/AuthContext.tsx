@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Session, User } from "@supabase/supabase-js";
 import * as Notifications from "expo-notifications";
 import React, {
@@ -8,7 +7,6 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { Platform } from "react-native";
 import { supabase } from "../../lib/supabase";
 import { registerForPushNotifications } from "../utils/notifications";
 
@@ -114,12 +112,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           let body = "You have a new notification";
           if (notif.type === "like") {
             title = "New Like";
-            body = `${senderName} liked your post!`; // UI can react by refetching data
+            body = `${senderName} liked your post!`;
           } else if (notif.type === "follow") {
             title = "New Follower";
             body = `${senderName} started following you!`;
           }
-          // When app is in foreground, rely on UI updates instead of scheduling a local notification.
           console.log("Foreground notification event:", { title, body });
         },
       )

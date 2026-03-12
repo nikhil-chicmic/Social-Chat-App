@@ -135,9 +135,7 @@ export default function ChatRoomScreen() {
       "Someone";
 
     const messagePreview =
-      messageText.length > 80
-        ? `${messageText.slice(0, 77)}...`
-        : messageText;
+      messageText.length > 80 ? `${messageText.slice(0, 77)}...` : messageText;
 
     const { error } = await supabase.from("messages").insert({
       conversation_id: conversationId,
@@ -223,7 +221,6 @@ export default function ChatRoomScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        // Tweak offset so the header + input stay visible when keyboard is open
         keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 5}
       >
         <TouchableOpacity
@@ -253,7 +250,7 @@ export default function ChatRoomScreen() {
         ) : (
           <FlatList
             ref={flatListRef}
-            data={[...messages].reverse()} // newest at bottom, like Instagram
+            data={[...messages].reverse()}
             inverted
             keyExtractor={(item) => item.id.toString()}
             renderItem={renderMessage}
