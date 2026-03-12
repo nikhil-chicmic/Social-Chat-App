@@ -227,7 +227,7 @@ export default function ChatRoomScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         // Tweak offset so the header + input stay visible when keyboard is open
-        keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 90}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 5}
       >
         <TouchableOpacity
           style={styles.header}

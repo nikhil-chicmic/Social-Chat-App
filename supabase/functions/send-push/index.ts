@@ -4,52 +4,36 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
-serve(async (req: Request): Promise<Response> => {
-  if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
-  }
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
-
+serve(async (req: Request) => {
   try {
-    const body = await req.json();
-    const { recipientId, title, body: messageBody, data } = body;
+    const { recipientId, title, body, data } = await req.json();
 
     if (!recipientId) {
       return new Response("recipientId required", { status: 400 });
     }
 
-    const { data: user, error } = await supabase
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const { data: user } = await supabase
       .from("users")
       .select("expo_push_token")
       .eq("id", recipientId)
-      .maybeSingle();
-
-    if (error) {
-      console.error("DB error:", error);
-      return new Response("DB error", { status: 500 });
-    }
+      .single();
 
     if (!user?.expo_push_token) {
-      console.log("No push token for user:", recipientId);
       return new Response("No push token", { status: 200 });
     }
 
     const message = {
       to: user.expo_push_token,
       sound: "default",
-      title: title ?? "SocialHub",
-      body: messageBody ?? "New notification",
-      data: data ?? {},
+      title: title || "New Notification",
+      body: body || "",
+      data: data || {},
     };
-
-    console.log("Sending push to token:", user.expo_push_token);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
 
     const expoRes = await fetch(EXPO_PUSH_URL, {
       method: "POST",
@@ -57,23 +41,15 @@ serve(async (req: Request): Promise<Response> => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(message),
-      signal: controller.signal,
     });
 
-    clearTimeout(timeout);
+    const result = await expoRes.json();
 
-    const expoJson = await expoRes.json();
-
-    console.log("Expo response:", expoJson);
-
-    return new Response(JSON.stringify(expoJson), {
-      status: 200,
+    return new Response(JSON.stringify(result), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("Edge error:", err);
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
-    });
+    console.error(err);
+    return new Response("Error sending notification", { status: 500 });
   }
 });
