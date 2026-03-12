@@ -16,15 +16,13 @@ export async function registerForPushNotifications() {
 
     const isPhysicalDevice = Device.isDevice;
     const isAndroidEmulator = !Device.isDevice && Platform.OS === "android";
-
-    // Allow physical devices on both platforms and Android emulators.
-    // iOS simulator still cannot receive real push notifications.
     if (!isPhysicalDevice && !isAndroidEmulator) {
       console.log("Push notifications require a physical device.");
       return null;
     }
 
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
     if (existingStatus !== "granted") {

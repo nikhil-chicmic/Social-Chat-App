@@ -1,14 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import React, { useCallback, useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   FlatList,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
-  DeviceEventEmitter,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../../lib/supabase";
@@ -122,9 +122,13 @@ const HomeScreen = () => {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.screen}>
         <View style={styles.header}>
-          <Text style={styles.appText}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={styles.appText}>Social</Text>
+            <Text style={{ color: "#fff" }}>Hub</Text>
+          </View>
+          {/* <Text style={styles.appText}>
             Social<Text style={{ color: "#fff" }}>Hub</Text>
-          </Text>
+          </Text> */}
 
           <TouchableOpacity
             style={styles.chatIcon}
