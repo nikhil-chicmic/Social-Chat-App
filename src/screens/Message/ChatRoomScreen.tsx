@@ -141,58 +141,45 @@ export default function ChatRoomScreen() {
     const messageText = inputText.trim();
     setInputText("");
 
-    try {
-      const { error } = await supabase.from("messages").insert({
-        conversation_id: conversationId,
-        sender_id: user?.id,
-        content: messageText,
+    const { error } = await supabase.from("messages").insert({
+      conversation_id: conversationId,
+      sender_id: user?.id,
+      content: messageText,
+    });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    const recipientId = otherUser?.id;
+
+    if (recipientId) {
+      const { data, error } = await supabase.functions.invoke("send-push", {
+        body: {
+          recipientId,
+          title: `New message from ${
+            user?.user_metadata?.username || "Someone"
+          }`,
+          body: messageText,
+          data: {
+            type: "message",
+            conversationId,
+            fromUserId: user?.id,
+          },
+        },
       });
 
-      if (error) {
-        console.error(error);
-        return;
-      }
-
-      await supabase
-        .from("conversations")
-        .update({
-          updated_at: new Date().toISOString(),
-          last_message: messageText,
-        })
-        .eq("id", conversationId);
-
-      loadMessages();
-      const recipientId = otherUser?.id;
-      if (recipientId) {
-        try {
-          const { data: fnData, error: fnError } =
-            await supabase.functions.invoke("send-push", {
-              body: {
-                recipientId,
-                title: `New message from ${
-                  user?.user_metadata?.username || "Someone"
-                }`,
-                body: messageText,
-                data: {
-                  type: "message",
-                  conversationId,
-                  fromUserId: user?.id,
-                },
-              },
-            });
-
-          if (fnError) {
-            console.error("send-push function error:", fnError);
-          } else {
-            console.log("send-push function response:", fnData);
-          }
-        } catch (err) {
-          console.error("send-push function network error:", err);
-        }
-      }
-    } catch (err) {
-      console.error(err);
+      if (error) console.error(error);
     }
+
+    await supabase
+      .from("conversations")
+      .update({
+        updated_at: new Date().toISOString(),
+        last_message: messageText,
+      })
+      .eq("id", conversationId);
   }
 
   function renderMessage({ item }: any) {
