@@ -144,19 +144,40 @@ serve(async (req: Request): Promise<Response> => {
 
     const fcmToken = user.expo_push_token as string;
 
+    // Try to fetch sender profile image so we can show it in the notification (Instagram-style)
+    let senderImageUrl: string | null = null;
+    const senderId = (data as any)?.fromUserId;
+    if (senderId) {
+      const { data: senderRow, error: senderError } = await supabase
+        .from("users")
+        .select("photo_url")
+        .eq("id", senderId)
+        .maybeSingle();
+
+      if (!senderError && senderRow?.photo_url) {
+        senderImageUrl = senderRow.photo_url as string;
+      }
+    }
+
     const payload = {
       message: {
         token: fcmToken,
         notification: {
           title: title ?? "SocialHub",
           body: messageBody ?? "New notification",
+          // Large image in supported notification UIs
+          image: senderImageUrl ?? undefined,
         },
         android: {
           notification: {
             channel_id: "default",
+            image: senderImageUrl ?? undefined,
           },
         },
-        data: data ?? {},
+        data: {
+          ...(data ?? {}),
+          senderImage: senderImageUrl ?? "",
+        },
       },
     };
 
