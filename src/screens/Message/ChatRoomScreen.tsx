@@ -125,8 +125,6 @@ export default function ChatRoomScreen() {
         },
         (payload) => {
           setMessages((prev) => [...prev, payload.new]);
-          // Keep the read receipt up-to-date so the unread badge
-          // doesn't reappear when navigating back to MessageScreen
           updateReadReceipt(new Date(payload.new.created_at).getTime());
         },
       )
@@ -163,7 +161,7 @@ export default function ChatRoomScreen() {
         })
         .eq("id", conversationId);
 
-      // Fire backend push notification via Supabase Edge Function
+      loadMessages();
       const recipientId = otherUser?.id;
       if (recipientId) {
         try {
