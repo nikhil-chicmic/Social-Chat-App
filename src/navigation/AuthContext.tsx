@@ -1,8 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Constants from "expo-constants";
 import { Session, User } from "@supabase/supabase-js";
 import * as Notifications from "expo-notifications";
-import * as Device from "expo-device";
 import React, {
   createContext,
   ReactNode,
@@ -12,6 +10,7 @@ import React, {
 } from "react";
 import { Platform } from "react-native";
 import { supabase } from "../../lib/supabase";
+import { registerForPushNotifications } from "../utils/notifications";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -64,71 +63,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const registerPushToken = async () => {
       try {
-        const isPhysicalDevice = Device.isDevice;
-        const isAndroidEmulator = !Device.isDevice && Platform.OS === "android";
+        const token = await registerForPushNotifications();
 
-        // Allow physical devices on both platforms and Android emulators.
-        // iOS simulator still cannot receive real push notifications.
-        if (!isPhysicalDevice && !isAndroidEmulator) {
-          console.log(
-            "Push notifications require a physical device or Android emulator.",
-          );
-          return;
-        }
-
-        // Respect a stored user choice to not receive notifications
-        const deniedFlag = await AsyncStorage.getItem(
-          "NOTIFICATIONS_PERMISSION_DENIED",
-        );
-        if (deniedFlag === "true") {
-          console.log("User has previously denied notifications; skipping.");
+        if (!token) {
           setHasRegisteredPush(true);
           return;
         }
-
-        const { status: existingStatus } =
-          await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-
-        if (existingStatus !== "granted") {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
-
-        if (finalStatus !== "granted") {
-          console.log("Notification permissions not granted.");
-          await AsyncStorage.setItem(
-            "NOTIFICATIONS_PERMISSION_DENIED",
-            "true",
-          );
-          setHasRegisteredPush(true);
-          return;
-        }
-
-        // Clear the denied flag if the user has now accepted
-        await AsyncStorage.removeItem("NOTIFICATIONS_PERMISSION_DENIED");
-
-        // Resolve the Expo projectId explicitly to satisfy SDK 51+ requirements
-        const projectId =
-          // EAS-managed projects expose this at runtime in dev client / builds
-          (Constants as any).easConfig?.projectId ||
-          Constants.expoConfig?.extra?.eas?.projectId ||
-          process.env.EXPO_PROJECT_ID;
-
-        if (!projectId) {
-          console.log(
-            'Expo projectId is missing. Set EXPO_PROJECT_ID or ensure EAS project is linked.',
-          );
-          setHasRegisteredPush(true);
-          return;
-        }
-
-        const tokenResponse = await Notifications.getExpoPushTokenAsync({
-          projectId,
-        });
-        const token = tokenResponse.data;
-
-        if (!token) return;
 
         const { error } = await supabase
           .from("users")
@@ -141,7 +81,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         setHasRegisteredPush(true);
-        console.log("Registered Expo push token:", token);
+        console.log("Registered device push token in AuthContext:", token);
       } catch (err) {
         console.error("Error registering push token:", err);
       }
@@ -174,15 +114,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           let body = "You have a new notification";
           if (notif.type === "like") {
             title = "New Like";
-            body = `${senderName} liked your post!`;
+            body = `${senderName} liked your post!`; // UI can react by refetching data
           } else if (notif.type === "follow") {
             title = "New Follower";
             body = `${senderName} started following you!`;
           }
-          await Notifications.scheduleNotificationAsync({
-            content: { title, body },
-            trigger: null,
-          });
+          // When app is in foreground, rely on UI updates instead of scheduling a local notification.
+          console.log("Foreground notification event:", { title, body });
         },
       )
       .on(
@@ -198,17 +136,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             .eq("user_id", user.id)
             .maybeSingle();
           if (parts) {
-            const { data: sender } = await supabase
-              .from("users")
-              .select("username")
-              .eq("id", msg.sender_id)
-              .single();
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: `New message from ${sender?.username || "Someone"}`,
-                body: msg.content,
-              },
-              trigger: null,
+            // App is already open; the chat UI subscribes to realtime messages,
+            // so we don't schedule another local notification here.
+            console.log("Foreground message event for conversation:", {
+              conversationId: msg.conversation_id,
             });
           }
         },
