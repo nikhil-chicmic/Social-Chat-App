@@ -16,7 +16,6 @@ serve(async (req: Request): Promise<Response> => {
 
   try {
     const body = await req.json();
-
     const { recipientId, title, body: messageBody, data } = body;
 
     if (!recipientId) {
@@ -30,11 +29,12 @@ serve(async (req: Request): Promise<Response> => {
       .maybeSingle();
 
     if (error) {
-      console.error(error);
+      console.error("DB error:", error);
       return new Response("DB error", { status: 500 });
     }
 
     if (!user?.expo_push_token) {
+      console.log("No push token for user:", recipientId);
       return new Response("No push token", { status: 200 });
     }
 
@@ -46,15 +46,25 @@ serve(async (req: Request): Promise<Response> => {
       data: data ?? {},
     };
 
+    console.log("Sending push to token:", user.expo_push_token);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
     const expoRes = await fetch(EXPO_PUSH_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(message),
+      signal: controller.signal,
     });
 
+    clearTimeout(timeout);
+
     const expoJson = await expoRes.json();
+
+    console.log("Expo response:", expoJson);
 
     return new Response(JSON.stringify(expoJson), {
       status: 200,
