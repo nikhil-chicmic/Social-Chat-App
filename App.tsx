@@ -6,17 +6,7 @@ import * as Notifications from "expo-notifications";
 import { useEffect, useRef } from "react";
 import { AuthProvider } from "./src/navigation/AuthContext";
 import RootNavigator from "./src/navigation/RootNavigator";
-
-Notifications.setNotificationHandler({
-  handleNotification:
-    async (): Promise<Notifications.NotificationBehavior> => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-});
+import "./src/utils/notificationHandler";
 
 export const navigationRef = createNavigationContainerRef<any>();
 

@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../../lib/supabase";
 import AuthContext from "../../navigation/AuthContext";
 import { DarkTheme } from "../../theme/DarkTheme";
+import { setChatScreenActive } from "../../utils/chatState";
 import { styles } from "./styles";
 
 export default function ChatRoomScreen() {
@@ -31,6 +32,13 @@ export default function ChatRoomScreen() {
   const [loading, setLoading] = useState(true);
 
   const flatListRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    setChatScreenActive(true);
+    return () => {
+      setChatScreenActive(false);
+    };
+  });
 
   async function updateReadReceipt(timestamp?: number) {
     const raw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");

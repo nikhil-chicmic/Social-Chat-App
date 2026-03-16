@@ -22,6 +22,7 @@ import { supabase } from "../../../lib/supabase";
 import ChatItem from "../../components/ChatItem";
 import AuthContext from "../../navigation/AuthContext";
 import { DarkTheme } from "../../theme/DarkTheme";
+import { setChatScreenActive } from "../../utils/chatState";
 
 const CONV_CACHE_KEY = "chat_conversation_cache";
 
@@ -35,6 +36,13 @@ const MessageScreen = () => {
   const conversationsRef = useRef<any[]>([]);
   const realtimeChannelRef = useRef<any>(null);
   const pollIntervalRef = useRef<any>(null);
+
+  useEffect(() => {
+    setChatScreenActive(true);
+    return () => {
+      setChatScreenActive(false);
+    };
+  });
 
   useEffect(() => {
     conversationsRef.current = conversations;
