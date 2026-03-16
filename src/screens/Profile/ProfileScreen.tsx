@@ -1,8 +1,18 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import React, { useCallback, useEffect, useState } from "react";
-import { DeviceEventEmitter, ScrollView, StyleSheet, View } from "react-native";
+import {
+  Alert,
+  DeviceEventEmitter,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { supabase } from "../../../lib/supabase";
+import { styles } from "./styles";
 
+import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "./Header";
 import PostsGrid from "./PostsGrid";
 import ProfileTabs from "./ProfileTabs";
@@ -89,8 +99,29 @@ const ProfileScreen = () => {
     };
   }, []);
 
+  const handleLogout = () => {
+    Alert.alert("Log Out", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log Out",
+        style: "destructive",
+        onPress: () => supabase.auth.signOut(),
+      },
+    ]);
+  };
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView edges={["top"]} style={styles.container}>
+      <View style={styles.topBar}>
+        <View style={{ flexDirection: "row" }}>
+          <Text style={styles.topBarTitle}>Social</Text>
+          <Text style={{ ...styles.topBarTitle, color: "#fff" }}>Hub</Text>
+        </View>
+
+        <TouchableOpacity onPress={handleLogout} style={styles.iconButton}>
+          <Ionicons name="log-out-outline" size={22} color="#EBEBF5" />
+        </TouchableOpacity>
+      </View>
       <ScrollView showsVerticalScrollIndicator={false}>
         <Header />
 
@@ -110,15 +141,8 @@ const ProfileScreen = () => {
           </View>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
 export default ProfileScreen;
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-});

@@ -2,8 +2,10 @@ import {
   NavigationContainer,
   createNavigationContainerRef,
 } from "@react-navigation/native";
+import * as NavigationBar from "expo-navigation-bar";
 import * as Notifications from "expo-notifications";
 import { useEffect, useRef } from "react";
+import { Platform } from "react-native";
 import { AuthProvider } from "./src/navigation/AuthContext";
 import RootNavigator from "./src/navigation/RootNavigator";
 import "./src/utils/notificationHandler";
@@ -14,6 +16,10 @@ export default function App() {
   const responseListener = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
+    if (Platform.OS === "android") {
+      NavigationBar.setBackgroundColorAsync("#000000");
+      NavigationBar.setButtonStyleAsync("light");
+    }
     responseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
         const data: any = response.notification.request.content.data || {};

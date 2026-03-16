@@ -21,6 +21,8 @@ const LoginScreen = ({ navigation }: any) => {
 
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [activeEmail, setActiveEmail] = useState(false);
+  const [activePassword, setActivePassword] = useState(false);
 
   useEffect(() => {
     GoogleSignin.configure({
@@ -161,9 +163,11 @@ const LoginScreen = ({ navigation }: any) => {
         <Text style={styles.subtitle}>Sign in to continue</Text>
 
         <TextInput
+          onFocus={() => setActiveEmail(true)}
+          onBlur={() => setActiveEmail(false)}
           placeholder="Email address"
           placeholderTextColor="#9CA3AF"
-          style={styles.input}
+          style={activeEmail ? styles.inputActive : styles.input}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -171,9 +175,11 @@ const LoginScreen = ({ navigation }: any) => {
         />
 
         <TextInput
+          onFocus={() => setActivePassword(true)}
+          onBlur={() => setActivePassword(false)}
           placeholder="Password"
           placeholderTextColor="#9CA3AF"
-          style={styles.input}
+          style={activePassword ? styles.inputActive : styles.input}
           value={password}
           onChangeText={setPassword}
           secureTextEntry

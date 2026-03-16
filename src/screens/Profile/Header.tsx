@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import React, { useEffect, useState } from "react";
@@ -13,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { supabase } from "../../../lib/supabase";
 import { DarkTheme } from "../../theme/DarkTheme";
@@ -171,17 +169,6 @@ const Header = () => {
     setEditingProfile(false);
   };
 
-  const handleLogout = () => {
-    Alert.alert("Log Out", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log Out",
-        style: "destructive",
-        onPress: () => supabase.auth.signOut(),
-      },
-    ]);
-  };
-
   const saveDisabled =
     usernameDraft === profile?.username && bioDraft === profile?.bio;
 
@@ -195,17 +182,7 @@ const Header = () => {
   if (!profile) return null;
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <View style={styles.topBar}>
-        <Text style={styles.topBarTitle}>
-          Social<Text style={{ color: "#fff" }}>Hub</Text>
-        </Text>
-
-        <TouchableOpacity onPress={handleLogout} style={styles.iconButton}>
-          <Ionicons name="log-out-outline" size={22} color="#EBEBF5" />
-        </TouchableOpacity>
-      </View>
-
+    <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
           <Image
@@ -303,7 +280,7 @@ const Header = () => {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 };
 

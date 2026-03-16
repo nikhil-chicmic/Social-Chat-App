@@ -41,6 +41,17 @@ export const styles = StyleSheet.create({
     fontSize: 15,
     color: "#111827",
   },
+
+  inputActive: {
+    borderWidth: 1,
+    borderColor: "#000",
+    backgroundColor: "#FFFFFF",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 15,
+    fontSize: 15,
+    color: "#111827",
+  },
   primaryButton: {
     backgroundColor: "#BAF533",
     padding: 15,
@@ -109,7 +120,8 @@ export const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
+    paddingTop: 10,
   },
 
   appText: {

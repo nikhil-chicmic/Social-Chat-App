@@ -19,6 +19,9 @@ const SignupScreen = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeUsername, setActiveUsername] = useState(false);
+  const [activeEmail, setActiveEmail] = useState(false);
+  const [activePassword, setActivePassword] = useState(false);
 
   const validateInputs = () => {
     const trimmedUsername = username.trim().toLowerCase();
@@ -28,36 +31,23 @@ const SignupScreen = () => {
       throw new Error("All fields are required");
     }
 
-    if (password.length < 6) {
+    if (trimmedUsername.length < 4) {
+      throw new Error("Username must be at least 4 characters");
+    }
+
+    if (trimmedEmail.includes(" ")) {
+      throw new Error("Email cannot contain spaces");
+    }
+
+    if (trimmedUsername.includes(" ")) {
+      throw new Error("Username cannot contain spaces");
+    }
+
+    if (password.length < 5) {
       throw new Error("Password must be at least 6 characters");
     }
 
-    return { trimmedUsername, trimmedEmail };
-  };
-
-  const checkUsernameExists = async (username: string) => {
-    const { data } = await supabase
-      .from("users")
-      .select("username")
-      .eq("username", username)
-      .single();
-
-    return !!data;
-  };
-
-  const createUserProfile = async (userId: string, username: string) => {
-    const { error } = await supabase.from("users").insert([
-      {
-        id: userId,
-        username,
-        bio: "",
-        photo_url: "",
-        followers_count: 0,
-        following_count: 0,
-      },
-    ]);
-
-    if (error) throw error;
+    return { trimmedUsername, trimmedEmail, password };
   };
 
   const handleSignup = async () => {
@@ -66,8 +56,15 @@ const SignupScreen = () => {
 
       const { trimmedUsername, trimmedEmail } = validateInputs();
 
-      const usernameExists = await checkUsernameExists(trimmedUsername);
-      if (usernameExists) throw new Error("Username already taken");
+      const { data: existingUser } = await supabase
+        .from("users")
+        .select("username")
+        .eq("username", trimmedUsername)
+        .maybeSingle();
+
+      if (existingUser) {
+        throw new Error("Username already taken");
+      }
 
       const { data, error } = await supabase.auth.signUp({
         email: trimmedEmail,
@@ -77,13 +74,17 @@ const SignupScreen = () => {
       if (error) throw error;
       if (!data.user) throw new Error("User creation failed");
 
-      await createUserProfile(data.user.id, trimmedUsername);
-    } catch (err: any) {
-      await supabase.auth.signOut();
-      Alert.alert("Signup Error", err.message);
-    }
+      await supabase
+        .from("users")
+        .update({ username: trimmedUsername })
+        .eq("id", data.user.id);
 
-    setLoading(false);
+      Alert.alert("Success", "Account created");
+    } catch (err: any) {
+      Alert.alert("Signup Error", err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -99,18 +100,22 @@ const SignupScreen = () => {
         <Text style={styles.subtitle}>Start your journey with us</Text>
 
         <TextInput
+          onFocus={() => setActiveUsername(true)}
+          onBlur={() => setActiveUsername(false)}
           placeholder="Username"
           placeholderTextColor="#9CA3AF"
-          style={styles.input}
+          style={activeUsername ? styles.inputActive : styles.input}
           value={username}
           onChangeText={setUsername}
           autoCapitalize="none"
         />
 
         <TextInput
+          onFocus={() => setActiveEmail(true)}
+          onBlur={() => setActiveEmail(false)}
           placeholder="Email address"
           placeholderTextColor="#9CA3AF"
-          style={styles.input}
+          style={activeEmail ? styles.inputActive : styles.input}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -118,9 +123,11 @@ const SignupScreen = () => {
         />
 
         <TextInput
+          onFocus={() => setActivePassword(true)}
+          onBlur={() => setActivePassword(false)}
           placeholder="Password"
           placeholderTextColor="#9CA3AF"
-          style={styles.input}
+          style={activePassword ? styles.inputActive : styles.input}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -197,6 +204,16 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: "grey",
+    backgroundColor: "#FFFFFF",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 15,
+    fontSize: 15,
+  },
+
+  inputActive: {
+    borderWidth: 1,
+    borderColor: "#000",
     backgroundColor: "#FFFFFF",
     padding: 14,
     borderRadius: 12,

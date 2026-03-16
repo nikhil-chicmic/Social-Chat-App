@@ -200,7 +200,7 @@ const OtherProfileScreen = () => {
               style={styles.avatar}
             />
 
-            <View style={styles.statsContainer}>
+            <View style={{ ...styles.statsContainer, paddingLeft: 20 }}>
               <Stat label="Posts" value={postCount} />
 
               <TouchableOpacity

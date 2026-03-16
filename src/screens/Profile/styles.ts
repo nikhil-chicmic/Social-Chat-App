@@ -19,11 +19,11 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingTop: 10,
-    paddingBottom: 16,
+    paddingBottom: 10,
   },
   topBarTitle: {
     color: DarkTheme.PRIMARY_BUTTON,
-    fontSize: 26,
+    fontSize: 32,
     fontWeight: "900",
     letterSpacing: -1,
   },
@@ -68,7 +68,6 @@ export const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "space-between",
     paddingRight: 10,
-    paddingLeft: 20,
   },
   statBox: {
     alignItems: "center",

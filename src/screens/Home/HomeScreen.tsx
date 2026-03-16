@@ -67,16 +67,10 @@ const HomeScreen = () => {
 
   useEffect(() => {
     fetchPosts(true);
-
     const listener = DeviceEventEmitter.addListener("post_uploaded", () => {
       fetchPosts(true);
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
-
-    return () => listener.remove();
-  }, []);
-
-  useEffect(() => {
     const channel = supabase
       .channel("likes-realtime")
       .on(
@@ -104,6 +98,7 @@ const HomeScreen = () => {
 
     return () => {
       supabase.removeChannel(channel);
+      listener.remove();
     };
   }, []);
 

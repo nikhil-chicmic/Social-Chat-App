@@ -119,14 +119,14 @@ const UploadScreen = () => {
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
+        <View style={styles.header}>
+          <Text style={styles.title}>New Post</Text>
+        </View>
+
         <ScrollView
           style={styles.container}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
-            <Text style={styles.title}>New Post</Text>
-          </View>
-
           <TouchableOpacity
             style={[styles.imageBox, image && styles.imageBoxSelected]}
             onPress={pickImage}
@@ -167,17 +167,21 @@ const UploadScreen = () => {
           </TouchableOpacity>
 
           <Text style={styles.label}>Caption</Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Write something beautiful..."
-            placeholderTextColor="#666"
-            multiline
-            numberOfLines={4}
-            maxLength={800}
-            value={caption}
-            onChangeText={setCaption}
-          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{ flex: 1 }}
+          >
+            <TextInput
+              style={styles.input}
+              placeholder="Write something beautiful..."
+              placeholderTextColor="#666"
+              multiline
+              numberOfLines={4}
+              maxLength={800}
+              value={caption}
+              onChangeText={setCaption}
+            />
+          </KeyboardAvoidingView>
 
           <TouchableOpacity
             style={[
@@ -208,9 +212,10 @@ const styles = StyleSheet.create({
 
   title: {
     color: "#fff",
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: "800",
     letterSpacing: -0.5,
+    paddingHorizontal: 20,
   },
 
   imageBox: {
@@ -219,7 +224,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#161618",
     borderRadius: 20,
     borderWidth: 1.5,
-    borderColor: "#2A2A2C",
+    borderColor: "#ddd",
     borderStyle: "dashed",
     overflow: "hidden",
     justifyContent: "center",
@@ -283,7 +288,7 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: "#1A1A1C",
     borderWidth: 1,
-    borderColor: "#2A2A2C",
+    borderColor: "#ddd",
     borderRadius: 16,
     padding: 16,
     color: "#fff",
