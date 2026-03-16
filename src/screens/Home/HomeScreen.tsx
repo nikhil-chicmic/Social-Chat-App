@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   DeviceEventEmitter,
@@ -14,7 +14,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../../lib/supabase";
 import OurStory from "../../components/OurStory";
 import Post from "../../components/Post";
-import StoryCircle from "../../components/StoryCircle";
 import { DarkTheme } from "../../theme/DarkTheme";
 import { styles } from "./styles";
 
@@ -26,62 +25,56 @@ const HomeScreen = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
+
   const flatListRef = useRef<FlatList>(null);
 
-  const fetchPosts = useCallback(
-    async (reset = false) => {
-      if (loading) return;
+  const fetchPosts = async (reset = false) => {
+    if (loading) return;
 
-      setLoading(true);
+    setLoading(true);
 
-      const from = reset ? 0 : page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
+    const currentPage = reset ? 0 : page;
+    const from = currentPage * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
 
-      const { data } = await supabase
-        .from("posts")
-        .select(
-          `
-          *,
-          users (
-            id,
-            username,
-            photo_url
-          )
-        `,
+    const { data } = await supabase
+      .from("posts")
+      .select(
+        `
+        *,
+        users (
+          id,
+          username,
+          photo_url
         )
-        .order("created_at", { ascending: false })
-        .range(from, to);
+      `,
+      )
+      .order("created_at", { ascending: false })
+      .range(from, to);
 
-      if (data) {
-        if (reset) {
-          setPosts(data);
-          setPage(1);
-        } else {
-          setPosts((prev) => {
-            const newPosts = data.filter(
-              (d) => !prev.some((p) => p.id === d.id),
-            );
-            return [...prev, ...newPosts];
-          });
-          setPage((prev) => prev + 1);
-        }
+    if (data) {
+      if (reset) {
+        setPosts(data);
+        setPage(1);
+      } else {
+        setPosts((prev) => [...prev, ...data]);
+        setPage((prev) => prev + 1);
       }
+    }
 
-      setLoading(false);
-    },
-    [page, loading],
-  );
+    setLoading(false);
+  };
 
   useEffect(() => {
     fetchPosts(true);
 
-    const sub = DeviceEventEmitter.addListener("post_uploaded", () => {
+    const listener = DeviceEventEmitter.addListener("post_uploaded", () => {
       fetchPosts(true);
-      flatListRef.current?.scrollToOffset({ animated: true, offset: 0 });
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
 
-    return () => sub.remove();
-  }, [fetchPosts]);
+    return () => listener.remove();
+  }, []);
 
   useEffect(() => {
     const channel = supabase
@@ -101,8 +94,8 @@ const HomeScreen = () => {
             .eq("post_id", postId);
 
           setPosts((prev) =>
-            prev.map((p) =>
-              p.id === postId ? { ...p, likes_count: count ?? 0 } : p,
+            prev.map((post) =>
+              post.id === postId ? { ...post, likes_count: count ?? 0 } : post,
             ),
           );
         },
@@ -114,21 +107,14 @@ const HomeScreen = () => {
     };
   }, []);
 
-  const renderPost = ({ item }: any) => {
-    return <Post post={item} />;
-  };
-
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.screen}>
         <View style={styles.header}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Text style={styles.appText}>Social</Text>
-            <Text style={{ color: "#fff" }}>Hub</Text>
+            <Text style={{ ...styles.appText, color: "#fff" }}>Hub</Text>
           </View>
-          {/* <Text style={styles.appText}>
-            Social<Text style={{ color: "#fff" }}>Hub</Text>
-          </Text> */}
 
           <TouchableOpacity
             style={styles.chatIcon}
@@ -144,27 +130,27 @@ const HomeScreen = () => {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.storySection}>
-          <ScrollView
-            horizontal
-            bounces={false}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingRight: 20 }}
-          >
-            <OurStory />
-            <StoryCircle />
-          </ScrollView>
-        </View>
-
         <FlatList
           ref={flatListRef}
           data={posts}
-          keyExtractor={(item) => item.id}
-          renderItem={renderPost}
+          keyExtractor={(item, index) => item.id + index}
+          renderItem={({ item }) => <Post post={item} />}
           showsVerticalScrollIndicator={false}
           onEndReached={() => fetchPosts()}
           onEndReachedThreshold={0.5}
           contentContainerStyle={{ paddingBottom: 20 }}
+          ListHeaderComponent={
+            <View style={styles.storySection}>
+              <ScrollView
+                horizontal
+                bounces={false}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingRight: 20 }}
+              >
+                <OurStory />
+              </ScrollView>
+            </View>
+          }
           ListFooterComponent={
             loading ? (
               <ActivityIndicator

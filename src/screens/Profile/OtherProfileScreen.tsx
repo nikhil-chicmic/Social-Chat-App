@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { supabase } from "../../../lib/supabase";
 import FollowButton from "../../components/Profile/FollowButton";
 import { DarkTheme } from "../../theme/DarkTheme";
@@ -22,6 +23,7 @@ import PostsGrid from "./PostsGrid";
 import { styles } from "./styles";
 
 const blankProfile = require("../../../assets/BlankProfile.png");
+const CONV_CACHE_KEY = "chat_conversation_cache";
 
 const OtherProfileScreen = () => {
   const route = useRoute();
@@ -29,94 +31,72 @@ const OtherProfileScreen = () => {
   const { userId } = route.params as { userId: string };
 
   const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<any[]>([]);
   const [postCount, setPostCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const handleMessageUser = async (targetUser: any) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user?.id) return;
+  const getCurrentUser = async () => {
+    const { data } = await supabase.auth.getUser();
+    return data.user;
+  };
 
-    const CONV_CACHE_KEY = "chat_conversation_cache";
-    let conversationId: string | null = null;
-
+  const findExistingConversation = async (myId: string, targetId: string) => {
     const { data: myConvs } = await supabase
       .from("conversation_participants")
       .select("conversation_id")
-      .eq("user_id", user.id);
+      .eq("user_id", myId);
 
-    if (myConvs && myConvs.length > 0) {
-      const convIds = myConvs.map((c) => c.conversation_id);
+    if (!myConvs?.length) return null;
 
-      const { data: theirConvs } = await supabase
-        .from("conversation_participants")
-        .select("conversation_id")
-        .eq("user_id", targetUser.id)
-        .in("conversation_id", convIds);
+    const convIds = myConvs.map((c) => c.conversation_id);
 
-      if (theirConvs && theirConvs.length > 0) {
-        conversationId = theirConvs[0].conversation_id;
-      }
+    const { data } = await supabase
+      .from("conversation_participants")
+      .select("conversation_id")
+      .eq("user_id", targetId)
+      .in("conversation_id", convIds);
 
-      if (!conversationId) {
-        const { data: theirMessages } = await supabase
-          .from("messages")
-          .select("conversation_id")
-          .eq("sender_id", targetUser.id)
-          .in("conversation_id", convIds)
-          .limit(1);
+    return data?.[0]?.conversation_id ?? null;
+  };
 
-        if (theirMessages && theirMessages.length > 0) {
-          conversationId = theirMessages[0].conversation_id;
-        }
-      }
+  const createConversation = async (myId: string, targetId: string) => {
+    const { data } = await supabase
+      .from("conversations")
+      .insert({})
+      .select()
+      .single();
 
-      if (!conversationId) {
-        try {
-          const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
-          const cache: Record<string, string> = raw ? JSON.parse(raw) : {};
-          for (const [cachedConvId, cachedUserId] of Object.entries(cache)) {
-            if (
-              cachedUserId === targetUser.id &&
-              convIds.includes(cachedConvId)
-            ) {
-              conversationId = cachedConvId;
-              break;
-            }
-          }
-        } catch {}
-      }
-    }
+    if (!data) return null;
+
+    await supabase.from("conversation_participants").insert([
+      { conversation_id: data.id, user_id: myId },
+      { conversation_id: data.id, user_id: targetId },
+    ]);
+
+    return data.id;
+  };
+
+  const handleMessageUser = async (targetUser: any) => {
+    const user = await getCurrentUser();
+    if (!user?.id) return;
+
+    let conversationId =
+      (await findExistingConversation(user.id, targetUser.id)) || null;
+
     if (!conversationId) {
-      const { data: newConv, error } = await supabase
-        .from("conversations")
-        .insert({})
-        .select()
-        .single();
-
-      if (error || !newConv) {
-        console.error("Create conversation error:", error);
-        return;
-      }
-
-      conversationId = newConv.id;
-
-      await supabase.from("conversation_participants").insert([
-        { conversation_id: newConv.id, user_id: user.id },
-        { conversation_id: newConv.id, user_id: targetUser.id },
-      ]);
+      conversationId = await createConversation(user.id, targetUser.id);
     }
 
-    if (conversationId) {
-      try {
-        const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
-        const cache: Record<string, string> = raw ? JSON.parse(raw) : {};
-        cache[conversationId] = targetUser.id;
-        await AsyncStorage.setItem(CONV_CACHE_KEY, JSON.stringify(cache));
-      } catch {}
-    }
+    if (!conversationId) return;
+
+    try {
+      const raw = await AsyncStorage.getItem(CONV_CACHE_KEY);
+      const cache = raw ? JSON.parse(raw) : {};
+
+      cache[conversationId] = targetUser.id;
+
+      await AsyncStorage.setItem(CONV_CACHE_KEY, JSON.stringify(cache));
+    } catch {}
 
     navigation.navigate("ChatRoom", {
       conversationId,
@@ -128,55 +108,51 @@ const OtherProfileScreen = () => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("users")
         .select("*")
         .eq("id", userId)
         .single();
 
-      if (error) throw error;
-
-      const { count: postsCount } = await supabase
+      const { count: posts } = await supabase
         .from("posts")
         .select("*", { count: "exact", head: true })
         .eq("user_id", userId);
 
-      const { count: followersCount } = await supabase
+      const { count: followers } = await supabase
         .from("followers")
         .select("*", { count: "exact", head: true })
         .eq("following_id", userId);
 
-      const { count: followingCount } = await supabase
+      const { count: following } = await supabase
         .from("followers")
         .select("*", { count: "exact", head: true })
         .eq("follower_id", userId);
 
-      setPostCount(postsCount ?? 0);
+      setPostCount(posts ?? 0);
 
       if (data) {
         setProfile({
           ...data,
-          followers_count: followersCount ?? 0,
-          following_count: followingCount ?? 0,
+          followers_count: followers ?? 0,
+          following_count: following ?? 0,
         });
       }
     } catch (err) {
-      console.error("Error loading user profile", err);
-    } finally {
-      setLoading(false);
+      console.error("Profile load error:", err);
     }
+
+    setLoading(false);
   };
 
   const fetchPosts = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("posts")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
-    if (!error && data) {
-      setPosts(data);
-    }
+    setPosts(data || []);
   };
 
   useFocusEffect(
@@ -217,14 +193,12 @@ const OtherProfileScreen = () => {
           </View>
 
           <View style={styles.header}>
-            <View style={styles.avatarContainer}>
-              <Image
-                source={
-                  profile.photo_url ? { uri: profile.photo_url } : blankProfile
-                }
-                style={styles.avatar}
-              />
-            </View>
+            <Image
+              source={
+                profile.photo_url ? { uri: profile.photo_url } : blankProfile
+              }
+              style={styles.avatar}
+            />
 
             <View style={styles.statsContainer}>
               <Stat label="Posts" value={postCount} />
@@ -260,7 +234,7 @@ const OtherProfileScreen = () => {
 
           <View style={styles.buttonRow}>
             <View style={{ flex: 1, marginRight: 10 }}>
-              <FollowButton targetUserId={userId} fullWidth={true} />
+              <FollowButton targetUserId={userId} fullWidth />
             </View>
 
             <TouchableOpacity
@@ -279,7 +253,7 @@ const OtherProfileScreen = () => {
             }}
           />
 
-          <PostsGrid posts={posts} refreshPosts={fetchPosts} />
+          <PostsGrid posts={posts} />
         </ScrollView>
       </SafeAreaView>
     </View>

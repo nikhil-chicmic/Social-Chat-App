@@ -1,95 +1,86 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 import { supabase } from "../../../lib/supabase";
 import { DarkTheme } from "../../theme/DarkTheme";
 
 const FollowersListItem = ({ user }: any) => {
   const navigation = useNavigation<any>();
-  const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user) setCurrentUserId(data.user.id);
-    });
+  useEffect(() => {
+    const loadUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setCurrentUserId(data.user?.id ?? null);
+    };
+
+    loadUser();
   }, []);
 
-  const handleMessageUser = async (targetUser: any) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const openChat = async (targetUser: any) => {
+    const { data } = await supabase.auth.getUser();
+    const me = data.user;
 
-    if (!user?.id) return;
+    if (!me) return;
 
+    // get my conversations
     const { data: myConvs } = await supabase
       .from("conversation_participants")
       .select("conversation_id")
-      .eq("user_id", user.id);
+      .eq("user_id", me.id);
 
-    let existingConvId: string | null = null;
+    let conversationId: string | null = null;
 
-    if (myConvs && myConvs.length > 0) {
-      const convIds = myConvs.map((c) => c.conversation_id);
+    if (myConvs?.length) {
+      const ids = myConvs.map((c) => c.conversation_id);
 
-      const { data: theirConvs } = await supabase
+      const { data: shared } = await supabase
         .from("conversation_participants")
         .select("conversation_id")
         .eq("user_id", targetUser.id)
-        .in("conversation_id", convIds);
+        .in("conversation_id", ids);
 
-      if (theirConvs && theirConvs.length > 0) {
-        existingConvId = theirConvs[0].conversation_id;
-      }
+      conversationId = shared?.[0]?.conversation_id ?? null;
     }
 
-    if (existingConvId) {
-      navigation.navigate("ChatRoom", {
-        conversationId: existingConvId,
-        otherUser: targetUser,
-      });
-      return;
+    // create conversation if not exists
+    if (!conversationId) {
+      const { data: conv } = await supabase
+        .from("conversations")
+        .insert({})
+        .select()
+        .single();
+
+      if (!conv) return;
+
+      conversationId = conv.id;
+
+      await supabase.from("conversation_participants").insert([
+        { conversation_id: conv.id, user_id: me.id },
+        { conversation_id: conv.id, user_id: targetUser.id },
+      ]);
     }
-
-    const { data: newConv, error } = await supabase
-      .from("conversations")
-      .insert({})
-      .select()
-      .single();
-
-    if (error || !newConv) {
-      console.error(error);
-      return;
-    }
-
-    await supabase.from("conversation_participants").insert([
-      { conversation_id: newConv.id, user_id: user.id },
-      { conversation_id: newConv.id, user_id: targetUser.id },
-    ]);
 
     navigation.navigate("ChatRoom", {
-      conversationId: newConv.id,
+      conversationId,
       otherUser: targetUser,
     });
   };
 
+  const goToProfile = () => {
+    if (currentUserId === user.id) return;
+    navigation.push("OtherProfile", { userId: user.id });
+  };
+
+  const isSelf = currentUserId === user.id;
+
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: 12,
-      }}
-    >
+    <View style={{ flexDirection: "row", alignItems: "center", padding: 12 }}>
       <TouchableOpacity
         style={{ flexDirection: "row", alignItems: "center", flex: 1 }}
-        onPress={() => {
-          if (currentUserId !== user.id) {
-            navigation.push("OtherProfile", { userId: user.id });
-          }
-        }}
-        activeOpacity={currentUserId === user.id ? 1 : 0.2}
+        onPress={goToProfile}
+        activeOpacity={isSelf ? 1 : 0.7}
       >
         <Image
           source={{ uri: user.photo_url }}
@@ -101,32 +92,30 @@ const FollowersListItem = ({ user }: any) => {
             backgroundColor: "#2A2A2C",
           }}
         />
+
         <Text style={{ color: "#fff", fontSize: 16, fontWeight: "600" }}>
           {user.username}
         </Text>
       </TouchableOpacity>
 
-      {currentUserId !== user.id && (
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <TouchableOpacity
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              backgroundColor: "rgba(198,255,0,0.1)",
-              justifyContent: "center",
-              alignItems: "center",
-              marginRight: 10,
-            }}
-            onPress={() => handleMessageUser(user)}
-          >
-            <Ionicons
-              name="chatbubble-ellipses-outline"
-              size={18}
-              color={DarkTheme.PRIMARY_BUTTON}
-            />
-          </TouchableOpacity>
-        </View>
+      {!isSelf && (
+        <TouchableOpacity
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            backgroundColor: "rgba(198,255,0,0.1)",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+          onPress={() => openChat(user)}
+        >
+          <Ionicons
+            name="chatbubble-ellipses-outline"
+            size={18}
+            color={DarkTheme.PRIMARY_BUTTON}
+          />
+        </TouchableOpacity>
       )}
     </View>
   );

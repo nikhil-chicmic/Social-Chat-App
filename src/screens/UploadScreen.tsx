@@ -16,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { supabase } from "../../lib/supabase";
 import { DarkTheme } from "../theme/DarkTheme";
 
@@ -24,22 +25,59 @@ const UploadScreen = () => {
   const [caption, setCaption] = useState("");
   const [uploading, setUploading] = useState(false);
 
-  const pickImage = async () => {
+  const requestPermission = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert(
         "Permission required",
         "We need access to your gallery to upload photos.",
       );
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const pickImage = async () => {
+    const allowed = await requestPermission();
+    if (!allowed) return;
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
     });
+
     if (!result.canceled) {
       setImage(result.assets[0].uri);
     }
+  };
+
+  const uploadImage = async (uri: string, userId: string) => {
+    const ext = uri.split(".").pop();
+    const fileName = `${userId}/${Date.now()}.${ext}`;
+
+    const response = await fetch(uri);
+    const buffer = await response.arrayBuffer();
+
+    const { error } = await supabase.storage
+      .from("Posts")
+      .upload(fileName, buffer, { contentType: "image/jpeg" });
+
+    if (error) throw error;
+
+    const { data } = supabase.storage.from("Posts").getPublicUrl(fileName);
+    return data.publicUrl;
+  };
+
+  const createPost = async (userId: string, imageUrl: string) => {
+    const { error } = await supabase.from("posts").insert([
+      {
+        user_id: userId,
+        image_url: imageUrl,
+        caption: caption.trim(),
+      },
+    ]);
+
+    if (error) throw error;
   };
 
   const handleUpload = async () => {
@@ -47,39 +85,26 @@ const UploadScreen = () => {
       Alert.alert("Image missing", "Please select an image to share.");
       return;
     }
+
     try {
       setUploading(true);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error("User not authenticated");
-      }
-      const fileExt = image.split(".").pop();
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-      const response = await fetch(image);
-      const arrayBuffer = await response.arrayBuffer();
-      const { error: uploadError } = await supabase.storage
-        .from("Posts")
-        .upload(fileName, arrayBuffer, {
-          contentType: "image/jpeg",
-        });
-      if (uploadError) throw uploadError;
-      const { data } = supabase.storage.from("Posts").getPublicUrl(fileName);
-      const imageUrl = data.publicUrl;
-      const { error: insertError } = await supabase.from("posts").insert([
-        {
-          user_id: user.id,
-          image_url: imageUrl,
-          caption: caption.trim(),
-        },
-      ]);
+
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
+
+      if (!user) throw new Error("User not authenticated");
+
+      const imageUrl = await uploadImage(image, user.id);
+      await createPost(user.id, imageUrl);
+
       setImage(null);
       setCaption("");
+
       DeviceEventEmitter.emit("post_uploaded");
+
       Alert.alert("Success", "Post uploaded successfully");
-    } catch (error: any) {
-      Alert.alert("Upload failed", error.message);
+    } catch (err: any) {
+      Alert.alert("Upload failed", err.message);
     } finally {
       setUploading(false);
     }
@@ -118,7 +143,9 @@ const UploadScreen = () => {
                     color={DarkTheme.PRIMARY_BUTTON}
                   />
                 </View>
+
                 <Text style={styles.placeholderTitle}>Add Photo</Text>
+
                 <Text style={styles.placeholderText}>
                   Choose an image from your gallery
                 </Text>
@@ -140,6 +167,7 @@ const UploadScreen = () => {
           </TouchableOpacity>
 
           <Text style={styles.label}>Caption</Text>
+
           <TextInput
             style={styles.input}
             placeholder="Write something beautiful..."
@@ -174,21 +202,17 @@ const UploadScreen = () => {
 export default UploadScreen;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  header: {
-    marginTop: 10,
-    marginBottom: 24,
-  },
+  container: { flex: 1, paddingHorizontal: 20, paddingBottom: 40 },
+
+  header: { marginTop: 10, marginBottom: 24 },
+
   title: {
     color: "#fff",
     fontSize: 28,
     fontWeight: "800",
     letterSpacing: -0.5,
   },
+
   imageBox: {
     width: "100%",
     height: 380,
@@ -202,37 +226,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 24,
   },
+
   imageBoxSelected: {
     borderStyle: "solid",
     borderColor: "#000",
   },
+
   preview: {
     width: "100%",
     height: "100%",
   },
+
   placeholder: {
     alignItems: "center",
     justifyContent: "center",
   },
+
   iconCircle: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: "rgba(198, 255, 0, 0.08)",
+    backgroundColor: "rgba(198,255,0,0.08)",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
   },
+
   placeholderTitle: {
     color: "#fff",
     fontSize: 18,
     fontWeight: "600",
     marginBottom: 8,
   },
+
   placeholderText: {
     color: "#8E8E93",
     fontSize: 14,
   },
+
   closeButton: {
     position: "absolute",
     top: 14,
@@ -240,6 +271,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.4)",
     borderRadius: 15,
   },
+
   label: {
     color: "#EBEBF5",
     fontSize: 15,
@@ -247,6 +279,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginLeft: 4,
   },
+
   input: {
     backgroundColor: "#1A1A1C",
     borderWidth: 1,
@@ -258,18 +291,15 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: "top",
   },
+
   uploadButton: {
     marginTop: 32,
-    backgroundColor: DarkTheme.PRIMARY_BUTTON, // #C6FF00
+    backgroundColor: DarkTheme.PRIMARY_BUTTON,
     paddingVertical: 16,
     borderRadius: 16,
     alignItems: "center",
-    shadowColor: DarkTheme.PRIMARY_BUTTON,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
   },
+
   uploadText: {
     fontWeight: "700",
     fontSize: 17,

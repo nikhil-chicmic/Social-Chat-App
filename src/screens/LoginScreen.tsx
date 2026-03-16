@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
 import { supabase } from "../../lib/supabase";
 import { DarkTheme } from "../theme/DarkTheme";
 import { registerForPushNotifications } from "../utils/notifications";
@@ -17,18 +18,68 @@ import { styles } from "./Home/styles";
 const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+
   useEffect(() => {
     GoogleSignin.configure({
       webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
       offlineAccess: true,
     });
   }, []);
+
+  const updatePushToken = async (userId: string) => {
+    const token = await registerForPushNotifications();
+    if (!token) return;
+
+    await supabase
+      .from("users")
+      .update({ expo_push_token: token })
+      .eq("id", userId);
+  };
+
+  const createUserIfNotExists = async (user: any) => {
+    const { data } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+
+    if (data) return;
+
+    const baseUsername = user.email?.split("@")[0].toLowerCase() || "user";
+    let username = baseUsername;
+    let counter = 1;
+
+    while (true) {
+      const { data: exists } = await supabase
+        .from("users")
+        .select("username")
+        .eq("username", username)
+        .single();
+
+      if (!exists) break;
+
+      username = `${baseUsername}${counter}`;
+      counter++;
+    }
+
+    await supabase.from("users").insert([
+      {
+        id: user.id,
+        username,
+        photo_url: user.user_metadata?.avatar_url || "",
+        bio: "",
+        followers_count: 0,
+        following_count: 0,
+      },
+    ]);
+  };
+
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Please fill all fields");
-      return;
+      return Alert.alert("Error", "Please fill all fields");
     }
 
     try {
@@ -41,90 +92,47 @@ const LoginScreen = ({ navigation }: any) => {
 
       if (error) throw error;
 
-      const user = data.user;
-
-      if (user) {
-        const token = await registerForPushNotifications();
-
-        if (token) {
-          await supabase
-            .from("users")
-            .update({ expo_push_token: token })
-            .eq("id", user.id);
-        }
+      if (data.user) {
+        await updatePushToken(data.user.id);
       }
-    } catch (error: any) {
-      Alert.alert("Login Failed", error.message);
-    } finally {
-      setLoading(false);
+    } catch (err: any) {
+      Alert.alert("Login Failed", err.message);
     }
+
+    setLoading(false);
   };
+
   const handleGoogleLogin = async () => {
     try {
       setGoogleLoading(true);
+
       await GoogleSignin.hasPlayServices();
       await GoogleSignin.signOut();
+
       const userInfo = await GoogleSignin.signIn();
-      if (!userInfo?.data?.user) {
-        setGoogleLoading(false);
-        return;
-      }
+      if (!userInfo?.data?.user) return;
+
       const { idToken } = await GoogleSignin.getTokens();
       if (!idToken) throw new Error("No ID token received");
+
       const { data, error } = await supabase.auth.signInWithIdToken({
         provider: "google",
         token: idToken,
       });
-      if (error) throw error;
-      const user = data.user;
-      if (user) {
-        const token = await registerForPushNotifications();
 
-        if (token) {
-          await supabase
-            .from("users")
-            .update({ expo_push_token: token })
-            .eq("id", user.id);
-        }
-        const { data: existing } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", user.id)
-          .single();
-        if (!existing) {
-          const baseUsername =
-            user.email?.split("@")[0].toLowerCase() || "user";
-          let finalUsername = baseUsername;
-          let counter = 1;
-          while (true) {
-            const { data: usernameCheck } = await supabase
-              .from("users")
-              .select("username")
-              .eq("username", finalUsername)
-              .single();
-            if (!usernameCheck) break;
-            finalUsername = `${baseUsername}${counter}`;
-            counter++;
-          }
-          const { error: insertError } = await supabase.from("users").insert([
-            {
-              id: user.id,
-              username: finalUsername,
-              photo_url: user.user_metadata?.avatar_url || "",
-              bio: "",
-              followers_count: 0,
-              following_count: 0,
-            },
-          ]);
-          if (insertError) throw insertError;
-        }
-      }
-    } catch (error: any) {
-      Alert.alert("Google Login Failed", error.message);
-    } finally {
-      setGoogleLoading(false);
+      if (error) throw error;
+
+      if (!data.user) return;
+
+      await updatePushToken(data.user.id);
+      await createUserIfNotExists(data.user);
+    } catch (err: any) {
+      Alert.alert("Google Login Failed", err.message);
     }
+
+    setGoogleLoading(false);
   };
+
   return (
     <View
       style={{ ...styles.container, alignContent: "center", paddingTop: "30%" }}
@@ -197,9 +205,9 @@ const LoginScreen = ({ navigation }: any) => {
           ) : (
             <>
               <Ionicons
-                style={{ marginRight: 10 }}
                 name="logo-google"
                 size={24}
+                style={{ marginRight: 10 }}
               />
               <Text style={styles.googleButtonText}>Continue with Google</Text>
             </>
@@ -219,4 +227,5 @@ const LoginScreen = ({ navigation }: any) => {
     </View>
   );
 };
+
 export default LoginScreen;

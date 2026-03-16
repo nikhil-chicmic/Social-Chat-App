@@ -1,20 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import React, {
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
   KeyboardAvoidingView,
   Platform,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -24,83 +17,59 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../../lib/supabase";
 import AuthContext from "../../navigation/AuthContext";
 import { DarkTheme } from "../../theme/DarkTheme";
+import { styles } from "./styles";
 
 export default function ChatRoomScreen() {
-  const route = useRoute<any>();
+  const { params }: any = useRoute();
   const navigation = useNavigation<any>();
   const { user } = useContext(AuthContext);
 
-  const { conversationId, otherUser } = route.params;
+  const { conversationId, otherUser } = params;
 
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState("");
-  const [loadingMessages, setLoadingMessages] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   const flatListRef = useRef<FlatList>(null);
-  const isInitialLoad = useRef(true);
 
-  const updateReadReceipt = useCallback(
-    async (timestamp?: number) => {
-      try {
-        const raw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
-        const cache = raw ? JSON.parse(raw) : {};
-        cache[conversationId] = timestamp || Date.now();
-        await AsyncStorage.setItem(
-          "READ_RECEIPTS_CACHE",
-          JSON.stringify(cache),
-        );
-      } catch (err) {
-        console.error("Read receipt error:", err);
-      }
-    },
-    [conversationId],
-  );
+  async function updateReadReceipt(timestamp?: number) {
+    const raw = await AsyncStorage.getItem("READ_RECEIPTS_CACHE");
+    const cache = raw ? JSON.parse(raw) : {};
 
-  useEffect(() => {
-    if (!conversationId) return;
+    cache[conversationId] = timestamp || Date.now();
 
-    isInitialLoad.current = true;
-
-    loadMessages();
-    const channel = subscribeRealtime();
-
-    return () => {
-      channel.unsubscribe();
-    };
-  }, [conversationId]);
+    await AsyncStorage.setItem("READ_RECEIPTS_CACHE", JSON.stringify(cache));
+  }
 
   async function loadMessages() {
-    setLoadingMessages(true);
+    setLoading(true);
 
-    try {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
+    const { data, error } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true });
 
-      if (error) {
-        console.error(error);
-        return;
-      }
-
-      setMessages(data || []);
-
-      if (data && data.length > 0) {
-        const last = data[data.length - 1];
-        updateReadReceipt(new Date(last.created_at).getTime());
-      } else {
-        updateReadReceipt(Date.now());
-      }
-    } catch (err) {
-      console.error(err);
+    if (error) {
+      console.error(error);
+      setLoading(false);
+      return;
     }
 
-    setLoadingMessages(false);
+    setMessages(data || []);
+
+    if (data?.length) {
+      const last = data[data.length - 1];
+      updateReadReceipt(new Date(last.created_at).getTime());
+    } else {
+      updateReadReceipt();
+    }
+
+    setLoading(false);
   }
 
   function subscribeRealtime() {
-    const channel = supabase
+    return supabase
       .channel(`chat-${conversationId}`)
       .on(
         "postgres_changes",
@@ -115,32 +84,37 @@ export default function ChatRoomScreen() {
           updateReadReceipt(new Date(payload.new.created_at).getTime());
         },
       )
-      .subscribe((status) => {
-        console.log("Realtime status:", status);
-      });
-
-    return channel;
+      .subscribe();
   }
+
+  useEffect(() => {
+    if (!conversationId) return;
+
+    loadMessages();
+    const channel = subscribeRealtime();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [conversationId]);
 
   async function sendMessage() {
     if (!inputText.trim()) return;
 
-    const messageText = inputText.trim();
+    const text = inputText.trim();
     setInputText("");
 
     const senderName =
       (user?.user_metadata as any)?.username ||
-      (user?.user_metadata as any)?.full_name ||
       user?.email?.split("@")[0] ||
       "Someone";
 
-    const messagePreview =
-      messageText.length > 80 ? `${messageText.slice(0, 77)}...` : messageText;
+    const preview = text.length > 80 ? text.slice(0, 77) + "..." : text;
 
     const { error } = await supabase.from("messages").insert({
       conversation_id: conversationId,
       sender_id: user?.id,
-      content: messageText,
+      content: text,
     });
 
     if (error) {
@@ -148,14 +122,12 @@ export default function ChatRoomScreen() {
       return;
     }
 
-    const recipientId = otherUser?.id;
-
-    if (recipientId) {
-      const { data, error } = await supabase.functions.invoke("send-push", {
+    if (otherUser?.id) {
+      await supabase.functions.invoke("send-push", {
         body: {
-          recipientId,
+          recipientId: otherUser.id,
           title: `New message from ${senderName}`,
-          body: messagePreview,
+          body: preview,
           data: {
             type: "message",
             conversationId,
@@ -164,15 +136,13 @@ export default function ChatRoomScreen() {
           },
         },
       });
-
-      if (error) console.error(error);
     }
 
     await supabase
       .from("conversations")
       .update({
         updated_at: new Date().toISOString(),
-        last_message: messageText,
+        last_message: text,
       })
       .eq("id", conversationId);
   }
@@ -221,13 +191,12 @@ export default function ChatRoomScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 5}
       >
         <TouchableOpacity
           style={styles.header}
-          onPress={() => {
-            navigation.push("OtherProfile", { userId: otherUser?.id });
-          }}
+          onPress={() =>
+            navigation.push("OtherProfile", { userId: otherUser?.id })
+          }
         >
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -243,7 +212,7 @@ export default function ChatRoomScreen() {
           <Text style={styles.headerName}>{otherUser?.username || "User"}</Text>
         </TouchableOpacity>
 
-        {loadingMessages ? (
+        {loading ? (
           <View style={styles.loader}>
             <ActivityIndicator size="large" color={DarkTheme.PRIMARY_BUTTON} />
           </View>
@@ -282,102 +251,3 @@ export default function ChatRoomScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: DarkTheme.PRIMARY_BACKGROUND,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#222",
-  },
-  headerAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    marginLeft: 12,
-    marginRight: 10,
-  },
-  headerName: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  messageRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    marginBottom: 10,
-  },
-  rowRight: {
-    justifyContent: "flex-end",
-  },
-  rowLeft: {
-    justifyContent: "flex-start",
-  },
-  avatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    marginRight: 8,
-  },
-  bubble: {
-    maxWidth: "75%",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
-  },
-  myBubble: {
-    backgroundColor: DarkTheme.PRIMARY_BUTTON,
-    borderBottomRightRadius: 4,
-  },
-  otherBubble: {
-    backgroundColor: "#2A2A2A",
-    borderBottomLeftRadius: 4,
-  },
-  messageText: {
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  timeText: {
-    fontSize: 11,
-    marginTop: 4,
-    textAlign: "right",
-  },
-  loader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#222",
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "#1A1A1A",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    color: "#fff",
-    fontSize: 16,
-    maxHeight: 120,
-  },
-  sendButton: {
-    marginLeft: 10,
-    backgroundColor: DarkTheme.PRIMARY_BUTTON,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-});

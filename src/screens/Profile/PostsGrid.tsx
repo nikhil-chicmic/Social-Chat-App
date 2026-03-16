@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import React from "react";
+import React, { memo, useCallback } from "react";
 import {
   Dimensions,
   FlatList,
@@ -22,34 +22,34 @@ type Post = {
 
 type Props = {
   posts: Post[];
-  refreshPosts?: () => Promise<void>; // optional prop
 };
 
 const PostsGrid = ({ posts }: Props) => {
   const navigation: any = useNavigation();
 
-  if (!posts || posts.length === 0) {
+  const openPost = useCallback(
+    (post: Post) => {
+      navigation.navigate("Post", { post });
+    },
+    [navigation],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: Post }) => (
+      <TouchableOpacity activeOpacity={0.9} onPress={() => openPost(item)}>
+        <Image source={{ uri: item.image_url }} style={styles.image} />
+      </TouchableOpacity>
+    ),
+    [openPost],
+  );
+
+  if (!posts?.length) {
     return (
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyText}>No Posts Yet</Text>
       </View>
     );
   }
-
-  const renderItem = ({ item }: { item: Post }) => {
-    return (
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() =>
-          navigation.navigate("Post", {
-            post: item,
-          })
-        }
-      >
-        <Image source={{ uri: item.image_url }} style={styles.image} />
-      </TouchableOpacity>
-    );
-  };
 
   return (
     <FlatList
@@ -59,11 +59,15 @@ const PostsGrid = ({ posts }: Props) => {
       numColumns={3}
       scrollEnabled={false}
       showsVerticalScrollIndicator={false}
+      removeClippedSubviews
+      initialNumToRender={12}
+      maxToRenderPerBatch={12}
+      windowSize={5}
     />
   );
 };
 
-export default PostsGrid;
+export default memo(PostsGrid);
 
 const styles = StyleSheet.create({
   image: {

@@ -1,75 +1,93 @@
 import { useFocusEffect } from "@react-navigation/native";
-import React, { useCallback, useState, useEffect } from "react";
-import { ScrollView, StyleSheet, View, DeviceEventEmitter } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { DeviceEventEmitter, ScrollView, StyleSheet, View } from "react-native";
 import { supabase } from "../../../lib/supabase";
+
 import Header from "./Header";
 import PostsGrid from "./PostsGrid";
 import ProfileTabs from "./ProfileTabs";
 
 const ProfileScreen = () => {
-  const [posts, setPosts] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<"posts" | "likes" | "save">(
     "posts",
   );
 
-  const fetchPosts = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const [posts, setPosts] = useState<any[]>([]);
+  const [likedPosts, setLikedPosts] = useState<any[]>([]);
+  const [savedPosts, setSavedPosts] = useState<any[]>([]);
 
+  const getCurrentUser = async () => {
+    const { data } = await supabase.auth.getUser();
+    return data.user;
+  };
+
+  const fetchPosts = async () => {
+    const user = await getCurrentUser();
     if (!user) return;
 
-    let query;
+    const { data } = await supabase
+      .from("posts")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
 
-    if (activeTab === "posts") {
-      query = supabase.from("posts").select("*").eq("user_id", user.id);
-    } else if (activeTab === "likes") {
-      query = supabase.from("likes").select("posts(*)").eq("user_id", user.id);
-    } else {
-      query = supabase
-        .from("saved_posts")
-        .select("posts(*)")
-        .eq("user_id", user.id);
-    }
+    setPosts(data || []);
+  };
 
-    const { data, error } = await query.order("created_at", {
-      ascending: false,
-    });
+  const fetchLikedPosts = async () => {
+    const user = await getCurrentUser();
+    if (!user) return;
 
-    if (!error && data) {
-      if (activeTab === "posts") {
-        setPosts(data);
-      } else {
-        const extractedPosts = data.map((item: any) => item.posts);
-        setPosts(extractedPosts);
-      }
-    }
+    const { data } = await supabase
+      .from("likes")
+      .select("posts(*)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
+    setLikedPosts(data?.map((i: any) => i.posts) || []);
+  };
+
+  const fetchSavedPosts = async () => {
+    const user = await getCurrentUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("saved_posts")
+      .select("posts(*)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
+    setSavedPosts(data?.map((i: any) => i.posts) || []);
   };
 
   useFocusEffect(
     useCallback(() => {
       fetchPosts();
-    }, [activeTab]),
+      fetchLikedPosts();
+      fetchSavedPosts();
+    }, []),
   );
 
   useEffect(() => {
-    const unlikeListener = DeviceEventEmitter.addListener("post_unliked", (postId: string) => {
-      if (activeTab === "likes") {
-        setPosts((currentPosts) => currentPosts.filter((p) => p.id !== postId));
-      }
-    });
+    const unlikeListener = DeviceEventEmitter.addListener(
+      "post_unliked",
+      (postId: string) => {
+        setLikedPosts((p) => p.filter((post) => post.id !== postId));
+      },
+    );
 
-    const unsaveListener = DeviceEventEmitter.addListener("post_unsaved", (postId: string) => {
-      if (activeTab === "save") {
-        setPosts((currentPosts) => currentPosts.filter((p) => p.id !== postId));
-      }
-    });
+    const unsaveListener = DeviceEventEmitter.addListener(
+      "post_unsaved",
+      (postId: string) => {
+        setSavedPosts((p) => p.filter((post) => post.id !== postId));
+      },
+    );
 
     return () => {
       unlikeListener.remove();
       unsaveListener.remove();
     };
-  }, [activeTab]);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -78,7 +96,19 @@ const ProfileScreen = () => {
 
         <ProfileTabs activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        <PostsGrid posts={posts} refreshPosts={fetchPosts} />
+        <View style={{ flex: 1 }}>
+          <View style={{ display: activeTab === "posts" ? "flex" : "none" }}>
+            <PostsGrid posts={posts} />
+          </View>
+
+          <View style={{ display: activeTab === "likes" ? "flex" : "none" }}>
+            <PostsGrid posts={likedPosts} />
+          </View>
+
+          <View style={{ display: activeTab === "save" ? "flex" : "none" }}>
+            <PostsGrid posts={savedPosts} />
+          </View>
+        </View>
       </ScrollView>
     </View>
   );

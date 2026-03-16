@@ -14,35 +14,34 @@ export async function registerForPushNotifications() {
       });
     }
 
-    const isPhysicalDevice = Device.isDevice;
-    const isAndroidEmulator = !Device.isDevice && Platform.OS === "android";
-    if (!isPhysicalDevice && !isAndroidEmulator) {
+    const isAndroidEmulator = Platform.OS === "android";
+
+    if (!Device.isDevice && !isAndroidEmulator) {
       console.log("Push notifications require a physical device.");
       return null;
     }
 
-    const { status: existingStatus } =
-      await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
+    const permission = await Notifications.getPermissionsAsync();
 
-    if (existingStatus !== "granted") {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
+    let status = permission.status;
+
+    if (status !== "granted") {
+      const request = await Notifications.requestPermissionsAsync();
+      status = request.status;
     }
 
-    if (finalStatus !== "granted") {
+    if (status !== "granted") {
       await AsyncStorage.setItem("NOTIFICATIONS_PERMISSION_DENIED", "true");
       return null;
     }
 
-    const devicePushToken = await Notifications.getDevicePushTokenAsync();
-    const token = devicePushToken.data;
+    const { data: token } = await Notifications.getDevicePushTokenAsync();
 
     console.log("FCM device token:", token);
 
     return token ?? null;
   } catch (err) {
-    console.error("Error registering for push notifications:", err);
+    console.error("Push notification registration error:", err);
     return null;
   }
 }

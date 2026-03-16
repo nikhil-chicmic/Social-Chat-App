@@ -10,3 +10,8 @@ export interface Props {
   time: string;
   onPress: () => void;
 }
+
+export type RootStackParamList = {
+  OtherProfile: { userId: string };
+  Post: { post: any };
+};

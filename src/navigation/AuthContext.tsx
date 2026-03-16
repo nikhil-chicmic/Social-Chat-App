@@ -7,6 +7,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+
 import { supabase } from "../../lib/supabase";
 import { registerForPushNotifications } from "../utils/notifications";
 
@@ -25,73 +26,68 @@ type AuthContextType = {
   session: Session | null;
   loading: boolean;
 };
+
 const AuthContext = createContext<AuthContextType>({
   user: null,
   session: null,
   loading: true,
 });
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [hasRegisteredPush, setHasRegisteredPush] = useState(false);
+
+  const getCurrentSession = async () => {
+    const { data } = await supabase.auth.getSession();
+    return data.session;
+  };
+
+  const savePushToken = async (userId: string) => {
+    const token = await registerForPushNotifications();
+    if (!token) return;
+
+    const { error } = await supabase
+      .from("users")
+      .update({ expo_push_token: token })
+      .eq("id", userId);
+
+    if (error) {
+      console.error("Error saving push token:", error);
+    }
+  };
+
   useEffect(() => {
     const initialize = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const session = await getCurrentSession();
+
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     };
+
     initialize();
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-      },
-    );
-    return () => {
-      listener.subscription.unsubscribe();
-    };
+
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+    });
+
+    return () => data.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (!user?.id || hasRegisteredPush) return;
+    if (!user?.id) return;
 
-    const registerPushToken = async () => {
-      try {
-        const token = await registerForPushNotifications();
-
-        if (!token) {
-          setHasRegisteredPush(true);
-          return;
-        }
-
-        const { error } = await supabase
-          .from("users")
-          .update({ expo_push_token: token })
-          .eq("id", user.id);
-
-        if (error) {
-          console.error("Error saving expo_push_token:", error);
-          return;
-        }
-
-        setHasRegisteredPush(true);
-        console.log("Registered device push token in AuthContext:", token);
-      } catch (err) {
-        console.error("Error registering push token:", err);
-      }
-    };
-
-    registerPushToken();
-  }, [user?.id, hasRegisteredPush]);
+    savePushToken(user.id);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
+
     const channel = supabase
-      .channel(`push-notifications-${user.id}`)
+      .channel(`user-events-${user.id}`)
+
       .on(
         "postgres_changes",
         {
@@ -102,45 +98,53 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         },
         async (payload) => {
           const notif = payload.new;
-          const { data: sender } = await supabase
+
+          const { data } = await supabase
             .from("users")
             .select("username")
             .eq("id", notif.sender_id)
             .single();
-          const senderName = sender?.username || "Someone";
-          let title = "New Notification";
+
+          const senderName = data?.username ?? "Someone";
+
+          let title = "Notification";
           let body = "You have a new notification";
+
           if (notif.type === "like") {
             title = "New Like";
-            body = `${senderName} liked your post!`;
-          } else if (notif.type === "follow") {
-            title = "New Follower";
-            body = `${senderName} started following you!`;
+            body = `${senderName} liked your post`;
           }
-          console.log("Foreground notification event:", { title, body });
+
+          if (notif.type === "follow") {
+            title = "New Follower";
+            body = `${senderName} started following you`;
+          }
+
+          console.log("Foreground notification:", { title, body });
         },
       )
+
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
         async (payload) => {
           const msg = payload.new;
+
           if (msg.sender_id === user.id) return;
-          const { data: parts } = await supabase
+
+          const { data } = await supabase
             .from("conversation_participants")
             .select("id")
             .eq("conversation_id", msg.conversation_id)
             .eq("user_id", user.id)
             .maybeSingle();
-          if (parts) {
-            // App is already open; the chat UI subscribes to realtime messages,
-            // so we don't schedule another local notification here.
-            console.log("Foreground message event for conversation:", {
-              conversationId: msg.conversation_id,
-            });
-          }
+
+          if (!data) return;
+
+          console.log("Foreground message received:", msg.conversation_id);
         },
       )
+
       .subscribe();
 
     return () => {
@@ -152,6 +156,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     () => ({ user, session, loading }),
     [user, session, loading],
   );
+
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+
 export default AuthContext;

@@ -68,6 +68,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "space-between",
     paddingRight: 10,
+    paddingLeft: 20,
   },
   statBox: {
     alignItems: "center",

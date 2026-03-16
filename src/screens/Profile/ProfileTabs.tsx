@@ -2,48 +2,46 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 
+type Tab = "posts" | "likes" | "save";
+
 type Props = {
-  activeTab: "posts" | "likes" | "save";
-  setActiveTab: (tab: "posts" | "likes" | "save") => void;
+  activeTab: Tab;
+  setActiveTab: (tab: Tab) => void;
 };
+
+const tabs: { key: Tab; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "posts", icon: "grid-outline" },
+  { key: "likes", icon: "heart-outline" },
+  { key: "save", icon: "bookmark-outline" },
+];
 
 const ProfileTabs = ({ activeTab, setActiveTab }: Props) => {
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        onPress={() => setActiveTab("posts")}
-        style={styles.tab}
-      >
-        <Ionicons
-          name="grid-outline"
-          size={24}
-          color={activeTab === "posts" ? "#fff" : "#777"}
-        />
-      </TouchableOpacity>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.key;
 
-      <TouchableOpacity
-        onPress={() => setActiveTab("likes")}
-        style={styles.tab}
-      >
-        <Ionicons
-          name="heart-outline"
-          size={24}
-          color={activeTab === "likes" ? "#fff" : "#777"}
-        />
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={() => setActiveTab("save")} style={styles.tab}>
-        <Ionicons
-          name="bookmark-outline"
-          size={24}
-          color={activeTab === "save" ? "#fff" : "#777"}
-        />
-      </TouchableOpacity>
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            style={styles.tab}
+            activeOpacity={0.7}
+            onPress={() => setActiveTab(tab.key)}
+          >
+            <Ionicons
+              name={tab.icon}
+              size={24}
+              color={isActive ? "#fff" : "#777"}
+            />
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 };
 
-export default ProfileTabs;
+export default React.memo(ProfileTabs);
+
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
@@ -51,6 +49,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderColor: "#222",
   },
+
   tab: {
     flex: 1,
     alignItems: "center",

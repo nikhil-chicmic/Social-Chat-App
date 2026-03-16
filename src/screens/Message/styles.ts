@@ -2,79 +2,88 @@ import { StyleSheet } from "react-native";
 import { DarkTheme } from "../../theme/DarkTheme";
 
 export const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: DarkTheme.PRIMARY_BACKGROUND },
+
   header: {
-    paddingHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 16,
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#222",
   },
-  headerText: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "800",
-    letterSpacing: -0.5,
+
+  headerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginLeft: 12,
+    marginRight: 10,
   },
-  backIcon: {
-    position: "absolute",
-    left: 20,
-    padding: 4,
+
+  headerName: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+
+  messageRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    marginBottom: 10,
   },
-  newChatIcon: {
-    position: "absolute",
-    right: 20,
-    padding: 4,
+
+  rowRight: { justifyContent: "flex-end" },
+  rowLeft: { justifyContent: "flex-start" },
+
+  avatar: { width: 26, height: 26, borderRadius: 13, marginRight: 8 },
+
+  bubble: {
+    maxWidth: "75%",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
   },
-  chatContainer: {
-    flex: 1,
-  },
-  emptyBox: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 40,
-    marginTop: -80,
-  },
-  emptyIconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "#161618",
-    borderWidth: 1,
-    borderColor: "#2A2A2C",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  emptyTitle: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "800",
-    marginBottom: 12,
-    letterSpacing: -0.5,
-  },
-  emptyText: {
-    color: "#8E8E93",
-    fontSize: 16,
-    textAlign: "center",
-    lineHeight: 24,
-    marginBottom: 32,
-  },
-  findFriendsButton: {
+
+  myBubble: {
     backgroundColor: DarkTheme.PRIMARY_BUTTON,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 24,
-    shadowColor: DarkTheme.PRIMARY_BUTTON,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    borderBottomRightRadius: 4,
   },
-  findFriendsText: {
-    fontWeight: "700",
+
+  otherBubble: {
+    backgroundColor: "#2A2A2A",
+    borderBottomLeftRadius: 4,
+  },
+
+  messageText: { fontSize: 15, lineHeight: 20 },
+
+  timeText: { fontSize: 11, marginTop: 4, textAlign: "right" },
+
+  loader: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#222",
+  },
+
+  input: {
+    flex: 1,
+    backgroundColor: "#1A1A1A",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    color: "#fff",
     fontSize: 16,
-    color: "#000",
+    maxHeight: 120,
+  },
+
+  sendButton: {
+    marginLeft: 10,
+    backgroundColor: DarkTheme.PRIMARY_BUTTON,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });

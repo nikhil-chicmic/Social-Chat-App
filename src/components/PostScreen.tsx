@@ -2,12 +2,12 @@ import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   Image,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  DeviceEventEmitter,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
@@ -15,68 +15,56 @@ import { supabase } from "../../lib/supabase";
 const blankProfile = require("../../assets/BlankProfile.png");
 
 const timeAgo = (date: string) => {
-  const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
-  const m = 60;
-  const h = 3600;
-  const d = 86400;
-
-  if (seconds < m) return `${seconds}s ago`;
-  if (seconds < h) return `${Math.floor(seconds / m)}m ago`;
-  if (seconds < d) return `${Math.floor(seconds / h)}h ago`;
-  return `${Math.floor(seconds / d)}d ago`;
+  const s = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 };
 
 const PostScreen = ({ route, navigation }: any) => {
   const { post } = route.params;
 
-  const [profile, setProfile] = useState<any>(post?.users ?? null);
+  const [profile, setProfile] = useState(post?.users ?? null);
   const [loading, setLoading] = useState(!post?.users);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
   const [expanded, setExpanded] = useState(false);
 
+  const username = profile?.username ?? "user";
+  const avatar = profile?.photo_url ? { uri: profile.photo_url } : blankProfile;
+
+  const timeText = useMemo(() => timeAgo(post.created_at), [post.created_at]);
+
   useEffect(() => {
-    checkLikeStatus();
-    checkSaveStatus();
-    loadLikesCount();
+    init();
   }, []);
 
-  const checkLikeStatus = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const init = async () => {
+    const { data } = await supabase.auth.getUser();
+    const user = data.user;
+    setCurrentUser(user);
 
-    if (!user) return;
+    if (!post?.users) {
+      const { data: u } = await supabase
+        .from("users")
+        .select("id,username,photo_url")
+        .eq("id", post.user_id)
+        .single();
+      setProfile(u);
+    }
 
-    const { data } = await supabase
-      .from("likes")
-      .select("id")
-      .eq("post_id", post.id)
-      .eq("user_id", user.id)
-      .maybeSingle();
+    await loadLikes();
+    await loadLikeStatus(user?.id);
+    await loadSaveStatus(user?.id);
 
-    setLiked(!!data);
+    setLoading(false);
   };
 
-  const checkSaveStatus = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    const { data } = await supabase
-      .from("saved_posts")
-      .select("id")
-      .eq("post_id", post.id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    setSaved(!!data);
-  };
-
-  const loadLikesCount = async () => {
+  const loadLikes = async () => {
     const { count } = await supabase
       .from("likes")
       .select("*", { count: "exact", head: true })
@@ -85,101 +73,85 @@ const PostScreen = ({ route, navigation }: any) => {
     setLikesCount(count ?? 0);
   };
 
-  const toggleLike = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const loadLikeStatus = async (userId: string | undefined) => {
+    if (!userId) return;
 
-    if (!user) return;
+    const { data } = await supabase
+      .from("likes")
+      .select("id")
+      .eq("post_id", post.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    setLiked(!!data);
+  };
+
+  const loadSaveStatus = async (userId: string | undefined) => {
+    if (!userId) return;
+
+    const { data } = await supabase
+      .from("saved_posts")
+      .select("id")
+      .eq("post_id", post.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    setSaved(!!data);
+  };
+
+  const toggleLike = async () => {
+    if (!currentUser) return;
 
     if (liked) {
-      const { error } = await supabase
+      await supabase
         .from("likes")
         .delete()
         .eq("post_id", post.id)
-        .eq("user_id", user.id);
+        .eq("user_id", currentUser.id);
 
-      if (!error) {
-        setLiked(false);
-        setLikesCount((prev: number) => Math.max(prev - 1, 0));
-        DeviceEventEmitter.emit("post_unliked", post.id);
-      }
+      setLiked(false);
+      setLikesCount((v) => Math.max(v - 1, 0));
+      DeviceEventEmitter.emit("post_unliked", post.id);
     } else {
-      const { error } = await supabase.from("likes").insert({
-        user_id: user.id,
+      await supabase.from("likes").insert({
+        user_id: currentUser.id,
         post_id: post.id,
       });
 
-      if (!error) {
-        setLiked(true);
-        setLikesCount((prev: number) => prev + 1);
+      setLiked(true);
+      setLikesCount((v) => v + 1);
 
-        if (post.user_id !== user.id) {
-          await supabase.from("notifications").insert({
-            sender_id: user.id,
-            receiver_id: post.user_id,
-            post_id: post.id,
-            type: "like",
-          });
-        }
+      if (post.user_id !== currentUser.id) {
+        await supabase.from("notifications").insert({
+          sender_id: currentUser.id,
+          receiver_id: post.user_id,
+          post_id: post.id,
+          type: "like",
+        });
       }
     }
   };
 
   const toggleSave = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
+    if (!currentUser) return;
 
     if (saved) {
-      const { error } = await supabase
+      await supabase
         .from("saved_posts")
         .delete()
         .eq("post_id", post.id)
-        .eq("user_id", user.id);
+        .eq("user_id", currentUser.id);
 
-      if (!error) {
-        setSaved(false);
-        DeviceEventEmitter.emit("post_unsaved", post.id);
-      }
+      setSaved(false);
+      DeviceEventEmitter.emit("post_unsaved", post.id);
     } else {
-      const { error } = await supabase.from("saved_posts").insert({
-        user_id: user.id,
+      await supabase.from("saved_posts").insert({
+        user_id: currentUser.id,
         post_id: post.id,
       });
-
-      if (!error) {
-        setSaved(true);
-      }
+      setSaved(true);
     }
   };
-
-  useEffect(() => {
-    if (post?.users) {
-      setLoading(false);
-      return;
-    }
-
-    const fetchUser = async () => {
-      const { data } = await supabase
-        .from("users")
-        .select("id,username,photo_url")
-        .eq("id", post.user_id)
-        .single();
-
-      if (data) setProfile(data);
-      setLoading(false);
-    };
-
-    fetchUser();
-  }, []);
-
-  const timeText = useMemo(() => {
-    if (!post?.created_at) return "";
-    return timeAgo(post.created_at);
-  }, [post]);
 
   if (loading) {
     return (
@@ -189,38 +161,31 @@ const PostScreen = ({ route, navigation }: any) => {
     );
   }
 
-  const avatar = profile?.photo_url ? { uri: profile.photo_url } : blankProfile;
-
-  const username = profile?.username ?? "user";
-
   return (
     <SafeAreaView style={styles.container}>
+      {/* TOP BAR */}
       <View style={styles.topBar}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={26} color="#fff" />
         </TouchableOpacity>
-
         <Text style={styles.title}>Post</Text>
-
         <View style={{ width: 26 }} />
       </View>
 
+      {/* HEADER */}
       <View style={styles.header}>
         <View style={styles.userInfo}>
           <Image source={avatar} style={styles.profileImg} />
           <Text style={styles.username}>{username}</Text>
         </View>
-
         <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
       </View>
 
-      <Image
-        source={{ uri: post.image_url }}
-        style={styles.postImage}
-        resizeMode="cover"
-      />
+      {/* IMAGE */}
+      <Image source={{ uri: post.image_url }} style={styles.image} />
 
-      <View style={styles.actionsRow}>
+      {/* ACTIONS */}
+      <View style={styles.actions}>
         <View style={styles.leftActions}>
           <TouchableOpacity onPress={toggleLike}>
             <Ionicons
@@ -230,13 +195,8 @@ const PostScreen = ({ route, navigation }: any) => {
             />
           </TouchableOpacity>
 
-          <TouchableOpacity>
-            <Ionicons name="chatbubble-outline" size={24} color="#fff" />
-          </TouchableOpacity>
-
-          <TouchableOpacity>
-            <Ionicons name="paper-plane-outline" size={24} color="#fff" />
-          </TouchableOpacity>
+          <Ionicons name="chatbubble-outline" size={24} color="#fff" />
+          <Ionicons name="paper-plane-outline" size={24} color="#fff" />
         </View>
 
         <TouchableOpacity onPress={toggleSave}>
@@ -248,33 +208,28 @@ const PostScreen = ({ route, navigation }: any) => {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.likesText}>{likesCount.toLocaleString()} likes</Text>
+      {/* LIKES */}
+      <Text style={styles.likes}>
+        {likesCount.toLocaleString()} {likesCount <= 1 ? "like" : "likes"}
+      </Text>
 
-      {post.caption ? (
+      {/* CAPTION */}
+      {post.caption && (
         <Text style={styles.caption}>
           <Text style={styles.username}>{username} </Text>
+          {expanded || post.caption.length <= 100
+            ? post.caption
+            : post.caption.slice(0, 100)}
 
-          {expanded || post.caption.length <= 100 ? (
-            <>
-              {post.caption}
-              {post.caption.length > 100 && (
-                <TouchableOpacity onPress={() => setExpanded(false)}>
-                  <Text style={{ color: "#999" }}> less</Text>
-                </TouchableOpacity>
-              )}
-            </>
-          ) : (
-            <>
-              {post.caption.slice(0, 100)}
-              <TouchableOpacity onPress={() => setExpanded(true)}>
-                <Text style={{ color: "#999" }}>...more</Text>
-              </TouchableOpacity>
-            </>
+          {post.caption.length > 100 && (
+            <TouchableOpacity onPress={() => setExpanded(!expanded)}>
+              <Text style={styles.more}>{expanded ? " less" : "...more"}</Text>
+            </TouchableOpacity>
           )}
         </Text>
-      ) : null}
+      )}
 
-      <Text style={styles.timeText}>{timeText}</Text>
+      <Text style={styles.time}>{timeText}</Text>
     </SafeAreaView>
   );
 };
@@ -282,10 +237,7 @@ const PostScreen = ({ route, navigation }: any) => {
 export default PostScreen;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
+  container: { flex: 1, backgroundColor: "#000" },
 
   center: {
     flex: 1,
@@ -298,75 +250,44 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    padding: 14,
   },
 
-  title: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
-  },
+  title: { color: "#fff", fontSize: 18, fontWeight: "600" },
 
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingBottom: 8,
   },
 
-  userInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  userInfo: { flexDirection: "row", alignItems: "center" },
 
-  profileImg: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    marginRight: 10,
-  },
+  profileImg: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
 
-  username: {
-    color: "#fff",
-    fontWeight: "700",
-  },
+  username: { color: "#fff", fontWeight: "700" },
 
-  postImage: {
+  image: {
     width: "100%",
     height: 420,
     backgroundColor: "#111",
   },
 
-  actionsRow: {
+  actions: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    padding: 14,
   },
 
-  leftActions: {
-    flexDirection: "row",
-    gap: 16,
-  },
+  leftActions: { flexDirection: "row", gap: 16 },
 
-  likesText: {
-    color: "#fff",
-    fontWeight: "600",
-    paddingHorizontal: 12,
-  },
+  likes: { color: "#fff", fontWeight: "600", paddingHorizontal: 14 },
 
-  caption: {
-    color: "#fff",
-    paddingHorizontal: 12,
-    marginTop: 4,
-  },
+  caption: { color: "#fff", paddingHorizontal: 14, marginTop: 6 },
 
-  timeText: {
-    color: "gray",
-    fontSize: 12,
-    paddingHorizontal: 12,
-    marginTop: 6,
-  },
+  more: { color: "#999" },
+
+  time: { color: "gray", fontSize: 12, paddingHorizontal: 14, marginTop: 6 },
 });

@@ -8,63 +8,84 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
 import { supabase } from "../../lib/supabase";
 import { DarkTheme } from "../theme/DarkTheme";
+
 const SignupScreen = () => {
   const navigation = useNavigation<any>();
+
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const handleSignup = async () => {
+
+  const validateInputs = () => {
     const trimmedUsername = username.trim().toLowerCase();
     const trimmedEmail = email.trim();
+
     if (!trimmedUsername || !trimmedEmail || !password) {
-      Alert.alert("Error", "All fields are required");
-      return;
+      throw new Error("All fields are required");
     }
+
     if (password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters");
-      return;
+      throw new Error("Password must be at least 6 characters");
     }
+
+    return { trimmedUsername, trimmedEmail };
+  };
+
+  const checkUsernameExists = async (username: string) => {
+    const { data } = await supabase
+      .from("users")
+      .select("username")
+      .eq("username", username)
+      .single();
+
+    return !!data;
+  };
+
+  const createUserProfile = async (userId: string, username: string) => {
+    const { error } = await supabase.from("users").insert([
+      {
+        id: userId,
+        username,
+        bio: "",
+        photo_url: "",
+        followers_count: 0,
+        following_count: 0,
+      },
+    ]);
+
+    if (error) throw error;
+  };
+
+  const handleSignup = async () => {
     try {
       setLoading(true);
-      const { data: existingUsername } = await supabase
-        .from("users")
-        .select("username")
-        .eq("username", trimmedUsername)
-        .single();
-      if (existingUsername) {
-        throw new Error("Username already taken");
-      }
-      const { data: signUpData, error: signUpError } =
-        await supabase.auth.signUp({
-          email: trimmedEmail,
-          password,
-        });
-      if (signUpError) throw signUpError;
-      const user = signUpData.user;
-      if (!user) throw new Error("User creation failed");
-      const { error: insertError } = await supabase.from("users").insert([
-        {
-          id: user.id,
-          username: trimmedUsername,
-          bio: "",
-          photo_url: "",
-          followers_count: 0,
-          following_count: 0,
-        },
-      ]);
-      if (insertError) {
-        await supabase.auth.signOut();
-        throw insertError;
-      }
-      setLoading(false);
-    } catch (error: any) {
-      setLoading(false);
-      Alert.alert("Signup Error", error.message);
+
+      const { trimmedUsername, trimmedEmail } = validateInputs();
+
+      const usernameExists = await checkUsernameExists(trimmedUsername);
+      if (usernameExists) throw new Error("Username already taken");
+
+      const { data, error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+      });
+
+      if (error) throw error;
+      if (!data.user) throw new Error("User creation failed");
+
+      await createUserProfile(data.user.id, trimmedUsername);
+    } catch (err: any) {
+      await supabase.auth.signOut();
+      Alert.alert("Signup Error", err.message);
     }
+
+    setLoading(false);
   };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -128,7 +149,9 @@ const SignupScreen = () => {
     </View>
   );
 };
+
 export default SignupScreen;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -136,6 +159,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 20,
   },
+
   card: {
     backgroundColor: "#FFFFFF",
     padding: 24,
@@ -145,26 +169,31 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 5,
   },
+
   title: {
     fontSize: 26,
     fontWeight: "700",
     color: "#111827",
   },
+
   subtitle: {
     fontSize: 14,
     color: "#6B7280",
     marginBottom: 25,
   },
+
   header: {
     alignItems: "center",
     marginTop: -100,
     marginBottom: "5%",
   },
+
   appText: {
     color: DarkTheme.PRIMARY_BUTTON,
     fontSize: 40,
     fontWeight: "900",
   },
+
   input: {
     borderWidth: 1,
     borderColor: "grey",
@@ -174,6 +203,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     fontSize: 15,
   },
+
   primaryButton: {
     backgroundColor: DarkTheme.PRIMARY_BUTTON,
     padding: 15,
@@ -181,19 +211,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 5,
   },
+
   primaryButtonText: {
     color: DarkTheme.PRIMARY_BACKGROUND,
     fontWeight: "600",
     fontSize: 15,
   },
+
   footer: {
     marginTop: 20,
     alignItems: "center",
   },
+
   footerText: {
     color: DarkTheme.PRIMARY_BACKGROUND,
     fontSize: 13,
   },
+
   footerLink: {
     color: "tomato",
     fontWeight: "600",

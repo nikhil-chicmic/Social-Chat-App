@@ -1,14 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import React, { useEffect, useMemo, useState } from "react";
-import { Image, StyleSheet, Text, TouchableOpacity, View, DeviceEventEmitter } from "react-native";
+import {
+  DeviceEventEmitter,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { supabase } from "../../lib/supabase";
 
 const blankProfile = require("../../assets/BlankProfile.png");
 
-import { useIsFocused, useNavigation } from "@react-navigation/native";
-
-const timeAgo = (dateString: string) => {
-  const diff = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+const timeAgo = (date: string) => {
+  const diff = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
   const m = 60,
     h = 3600,
     d = 86400;
@@ -25,14 +31,14 @@ type Props = {
 };
 
 const Post = ({ post, refreshPosts }: Props) => {
-  const [liked, setLiked] = useState(false);
-  const [likesCount, setLikesCount] = useState(0);
-  const [saved, setSaved] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [expanded, setExpanded] = useState(false);
-
-  const isFocused = useIsFocused();
   const navigation = useNavigation<any>();
+  const isFocused = useIsFocused();
+
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [liked, setLiked] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [expanded, setExpanded] = useState(false);
 
   const username = post?.users?.username ?? "user";
   const avatar = post?.users?.photo_url
@@ -42,21 +48,18 @@ const Post = ({ post, refreshPosts }: Props) => {
   const timeText = useMemo(() => timeAgo(post.created_at), [post.created_at]);
 
   useEffect(() => {
-    const getUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setUser(user);
+    const loadUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setCurrentUser(data.user);
     };
-    getUser();
+    loadUser();
   }, []);
 
   useEffect(() => {
-    if (isFocused) {
-      checkLikeStatus();
-      checkSaveStatus();
-      loadLikesCount();
-    }
+    if (!isFocused || !post?.id) return;
+    loadLikeStatus();
+    loadSaveStatus();
+    loadLikesCount();
   }, [isFocused, post.id]);
 
   const loadLikesCount = async () => {
@@ -68,141 +71,113 @@ const Post = ({ post, refreshPosts }: Props) => {
     setLikesCount(count ?? 0);
   };
 
-  const checkLikeStatus = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
+  const loadLikeStatus = async () => {
+    if (!currentUser) return;
 
     const { data } = await supabase
       .from("likes")
       .select("id")
       .eq("post_id", post.id)
-      .eq("user_id", user.id)
+      .eq("user_id", currentUser.id)
       .maybeSingle();
 
     setLiked(!!data);
   };
 
-  const checkSaveStatus = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
+  const loadSaveStatus = async () => {
+    if (!currentUser) return;
 
     const { data } = await supabase
       .from("saved_posts")
       .select("id")
       .eq("post_id", post.id)
-      .eq("user_id", user.id)
+      .eq("user_id", currentUser.id)
       .maybeSingle();
 
     setSaved(!!data);
   };
 
   const toggleLike = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
+    if (!currentUser) return;
 
     if (liked) {
-      const { error } = await supabase
+      await supabase
         .from("likes")
         .delete()
         .eq("post_id", post.id)
-        .eq("user_id", user.id);
+        .eq("user_id", currentUser.id);
 
-      if (!error) {
-        setLiked(false);
-        setLikesCount((prev) => Math.max(prev - 1, 0));
-        DeviceEventEmitter.emit("post_unliked", post.id);
-        if (refreshPosts) refreshPosts();
-      }
+      setLiked(false);
+      setLikesCount((v) => Math.max(v - 1, 0));
+      DeviceEventEmitter.emit("post_unliked", post.id);
     } else {
-      const { error } = await supabase.from("likes").insert({
-        user_id: user.id,
+      await supabase.from("likes").insert({
+        user_id: currentUser.id,
         post_id: post.id,
       });
 
-      if (!error) {
-        setLiked(true);
-        setLikesCount((prev) => prev + 1);
+      setLiked(true);
+      setLikesCount((v) => v + 1);
 
-        if (post.user_id !== user.id) {
-          await supabase.from("notifications").insert({
-            sender_id: user.id,
-            receiver_id: post.user_id,
-            post_id: post.id,
-            type: "like",
-          });
-        }
-
-        if (refreshPosts) refreshPosts();
+      if (post.user_id !== currentUser.id) {
+        await supabase.from("notifications").insert({
+          sender_id: currentUser.id,
+          receiver_id: post.user_id,
+          post_id: post.id,
+          type: "like",
+        });
       }
     }
+
+    refreshPosts?.();
   };
 
   const toggleSave = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
+    if (!currentUser) return;
 
     if (saved) {
-      const { error } = await supabase
+      await supabase
         .from("saved_posts")
         .delete()
         .eq("post_id", post.id)
-        .eq("user_id", user.id);
+        .eq("user_id", currentUser.id);
 
-      if (!error) {
-        setSaved(false);
-        DeviceEventEmitter.emit("post_unsaved", post.id);
-      }
+      setSaved(false);
+      DeviceEventEmitter.emit("post_unsaved", post.id);
     } else {
-      const { error } = await supabase.from("saved_posts").insert({
-        user_id: user.id,
+      await supabase.from("saved_posts").insert({
+        user_id: currentUser.id,
         post_id: post.id,
       });
 
-      if (!error) {
-        setSaved(true);
-      }
+      setSaved(true);
     }
   };
 
   return (
-    <View style={styles.postContainer}>
+    <View style={styles.container}>
+      {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity
-          style={styles.userInfo}
-          onPress={() => {
-            if (post.user_id === user?.id) {
-              navigation.navigate("Profile");
-            } else {
-              navigation.push("OtherProfile", { userId: post.user_id });
-            }
-          }}
+          style={styles.userRow}
+          onPress={() =>
+            post.user_id === currentUser?.id
+              ? navigation.navigate("Profile")
+              : navigation.push("OtherProfile", { userId: post.user_id })
+          }
         >
-          <Image source={avatar} style={styles.profileImg} />
+          <Image source={avatar} style={styles.avatar} />
           <Text style={styles.username}>{username}</Text>
         </TouchableOpacity>
 
         <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
       </View>
 
-      <Image
-        source={{ uri: post.image_url }}
-        style={styles.postImage}
-        resizeMode="cover"
-      />
+      {/* IMAGE */}
+      <Image source={{ uri: post.image_url }} style={styles.image} />
 
-      <View style={styles.actionsRow}>
+      {/* ACTIONS */}
+      <View style={styles.actions}>
         <View style={styles.leftActions}>
           <TouchableOpacity onPress={toggleLike}>
             <Ionicons
@@ -212,59 +187,42 @@ const Post = ({ post, refreshPosts }: Props) => {
             />
           </TouchableOpacity>
 
-          <TouchableOpacity>
-            <Ionicons name="chatbubble-outline" size={24} color="#fff" />
-          </TouchableOpacity>
-
-          <TouchableOpacity>
-            <Ionicons name="paper-plane-outline" size={24} color="#fff" />
-          </TouchableOpacity>
+          <Ionicons name="chatbubble-outline" size={24} color="#fff" />
+          <Ionicons name="paper-plane-outline" size={24} color="#fff" />
         </View>
 
         <TouchableOpacity onPress={toggleSave}>
           <Ionicons
             name={saved ? "bookmark" : "bookmark-outline"}
             size={24}
-            color={saved ? "#fff" : "#fff"}
+            color="#fff"
           />
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.likesText}>
+      {/* LIKES */}
+      <Text style={styles.likes}>
         {likesCount.toLocaleString()} {likesCount <= 1 ? "like" : "likes"}
       </Text>
 
-      {post.caption ? (
+      {/* CAPTION */}
+      {post.caption && (
         <Text style={styles.caption}>
           <Text style={styles.username}>{username} </Text>
 
-          {expanded || post.caption.length <= 100 ? (
-            <>
-              {post.caption}
-              {post.caption.length > 100 && (
-                <TouchableOpacity
-                  style={{ position: "relative", top: 4 }}
-                  onPress={() => setExpanded(false)}
-                >
-                  <Text style={{ color: "#999" }}> less</Text>
-                </TouchableOpacity>
-              )}
-            </>
-          ) : (
-            <>
-              {post.caption.slice(0, 100)}
-              <TouchableOpacity
-                onPress={() => setExpanded(true)}
-                style={{ position: "relative", top: 4 }}
-              >
-                <Text style={{ color: "#999" }}>...more</Text>
-              </TouchableOpacity>
-            </>
+          {expanded || post.caption.length <= 100
+            ? post.caption
+            : post.caption.slice(0, 100)}
+
+          {post.caption.length > 100 && (
+            <TouchableOpacity onPress={() => setExpanded(!expanded)}>
+              <Text style={styles.more}>{expanded ? " less" : "...more"}</Text>
+            </TouchableOpacity>
           )}
         </Text>
-      ) : null}
+      )}
 
-      <Text style={styles.timeText}>{timeText}</Text>
+      <Text style={styles.time}>{timeText}</Text>
     </View>
   );
 };
@@ -272,14 +230,14 @@ const Post = ({ post, refreshPosts }: Props) => {
 export default Post;
 
 const styles = StyleSheet.create({
-  postContainer: {
-    marginBottom: 24,
-    backgroundColor: "#161618",
-    borderRadius: 24,
+  container: {
     marginHorizontal: 16,
+    marginBottom: 24,
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "#161618",
     borderWidth: 1,
     borderColor: "#2A2A2C",
-    overflow: "hidden",
   },
 
   header: {
@@ -289,12 +247,12 @@ const styles = StyleSheet.create({
     padding: 14,
   },
 
-  userInfo: {
+  userRow: {
     flexDirection: "row",
     alignItems: "center",
   },
 
-  profileImg: {
+  avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -308,12 +266,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 
-  postImage: {
+  image: {
     width: "100%",
     height: 400,
   },
 
-  actionsRow: {
+  actions: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingHorizontal: 14,
@@ -322,16 +280,16 @@ const styles = StyleSheet.create({
 
   leftActions: {
     flexDirection: "row",
-    gap: 20,
     alignItems: "center",
+    gap: 20,
   },
 
-  likesText: {
+  likes: {
     color: "#fff",
     fontWeight: "700",
+    fontSize: 14,
     paddingHorizontal: 16,
     marginBottom: 6,
-    fontSize: 14,
   },
 
   caption: {
@@ -341,7 +299,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  timeText: {
+  more: {
+    color: "#999",
+  },
+
+  time: {
     color: "#8E8E93",
     fontSize: 12,
     fontWeight: "500",

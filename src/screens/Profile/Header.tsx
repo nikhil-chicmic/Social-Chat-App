@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { supabase } from "../../../lib/supabase";
 import { DarkTheme } from "../../theme/DarkTheme";
 import { styles } from "./styles";
@@ -21,200 +22,185 @@ import { styles } from "./styles";
 const blankProfile = require("../../../assets/BlankProfile.png");
 
 const Header = () => {
-  const [profile, setProfile] = useState<any>(null);
   const navigation = useNavigation<any>();
-  const [loading, setLoading] = useState(true);
-  const [editingProfile, setEditingProfile] = useState(false);
-  const [bioDraft, setBioDraft] = useState("");
-  const [usernameDraft, setUsernameDraft] = useState("");
-  const [uploading, setUploading] = useState(false);
+
+  const [profile, setProfile] = useState<any>(null);
   const [postCount, setPostCount] = useState(0);
-  const [disabled, setDisabled] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [bioDraft, setBioDraft] = useState("");
+
+  const getUser = async () => {
+    const { data } = await supabase.auth.getUser();
+    return data.user;
+  };
 
   const loadProfile = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+    const user = await getUser();
+    if (!user) return setLoading(false);
+
     const { data } = await supabase
       .from("users")
       .select("*")
       .eq("id", user.id)
       .single();
-    const { count: postsCount } = await supabase
+
+    const { count: posts } = await supabase
       .from("posts")
       .select("*", { count: "exact", head: true })
       .eq("user_id", user.id);
-    const { count: followersCount } = await supabase
+
+    const { count: followers } = await supabase
       .from("followers")
       .select("*", { count: "exact", head: true })
       .eq("following_id", user.id);
-    const { count: followingCount } = await supabase
+
+    const { count: following } = await supabase
       .from("followers")
       .select("*", { count: "exact", head: true })
       .eq("follower_id", user.id);
-    setPostCount(postsCount ?? 0);
+
+    setPostCount(posts ?? 0);
+
     if (data) {
       setProfile({
         ...data,
-        followers_count: followersCount ?? 0,
-        following_count: followingCount ?? 0,
+        followers_count: followers ?? 0,
+        following_count: following ?? 0,
       });
-      setBioDraft(data.bio ?? "");
+
       setUsernameDraft(data.username ?? "");
+      setBioDraft(data.bio ?? "");
     }
+
     setLoading(false);
   };
 
   useEffect(() => {
     loadProfile();
-    const sub = DeviceEventEmitter.addListener("followChanged", () => {
-      loadProfile();
-    });
+
+    const sub = DeviceEventEmitter.addListener("followChanged", loadProfile);
     return () => sub.remove();
   }, []);
 
-  const openEditModal = () => {
-    setBioDraft(profile?.bio ?? "");
-    setUsernameDraft(profile?.username ?? "");
-    setEditingProfile(true);
-  };
-
-  const pickImage = useCallback(async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const pickImage = async () => {
+    const user = await getUser();
     if (!user) return;
+
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permission required");
-      return;
-    }
+    if (!permission.granted) return Alert.alert("Permission required");
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.7,
       allowsEditing: true,
       aspect: [1, 1],
     });
+
     if (result.canceled) return;
+
     try {
       setUploading(true);
+
       const uri = result.assets[0].uri;
-      const fileExt = uri.split(".").pop();
-      const fileName = `${user.id}/avatar.${fileExt}`;
-      await supabase.storage.from("avatars").remove([fileName]);
+      const fileName = `${user.id}/avatar.jpg`;
+
       const response = await fetch(uri);
-      const arrayBuffer = await response.arrayBuffer();
-      const { error: uploadError } = await supabase.storage
+      const buffer = await response.arrayBuffer();
+
+      await supabase.storage.from("avatars").remove([fileName]);
+
+      await supabase.storage
         .from("avatars")
-        .upload(fileName, arrayBuffer, {
-          contentType: "image/jpeg",
-        });
-      if (uploadError) throw uploadError;
+        .upload(fileName, buffer, { contentType: "image/jpeg" });
+
       const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
+
       const photoUrl = `${data.publicUrl}?t=${Date.now()}`;
+
       await supabase
         .from("users")
         .update({ photo_url: photoUrl })
         .eq("id", user.id);
-      setProfile((prev: any) => ({
-        ...prev,
-        photo_url: photoUrl,
-      }));
+
+      setProfile((p: any) => ({ ...p, photo_url: photoUrl }));
     } catch (err: any) {
       Alert.alert("Upload failed", err.message);
-    } finally {
-      setUploading(false);
     }
-  }, []);
+
+    setUploading(false);
+  };
 
   const handleProfileSave = async () => {
     if (!profile) return;
 
-    if (usernameDraft.includes(" ")) {
-      Alert.alert("Username cannot contain spaces");
-      return;
-    }
-    const newUsername = usernameDraft.trim().toLowerCase();
-    if (newUsername.length < 4) {
-      Alert.alert("Username: Minimum 4 characters required");
-      return;
-    }
+    const username = usernameDraft.trim().toLowerCase();
 
-    if (bioDraft.split("\n").length > 4) {
-      Alert.alert("Bio: Max 4 lines allowed");
-      return;
-    }
+    if (username.includes(" "))
+      return Alert.alert("Username cannot contain spaces");
 
-    if (newUsername !== profile.username) {
-      const { data: existing } = await supabase
+    if (username.length < 4)
+      return Alert.alert("Username: Minimum 4 characters required");
+
+    if (bioDraft.split("\n").length > 4)
+      return Alert.alert("Bio: Max 4 lines allowed");
+
+    if (username !== profile.username) {
+      const { data } = await supabase
         .from("users")
         .select("username")
-        .eq("username", newUsername)
+        .eq("username", username)
         .single();
-      if (existing) {
-        Alert.alert("Username already taken");
-        return;
-      }
+
+      if (data) return Alert.alert("Username already taken");
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
+    const user = await getUser();
     if (!user) return;
 
     await supabase
       .from("users")
-      .update({ username: newUsername, bio: bioDraft })
+      .update({ username, bio: bioDraft })
       .eq("id", user.id);
 
-    setProfile((prev: any) => ({
-      ...prev,
-      username: newUsername,
-      bio: bioDraft,
-    }));
-
+    setProfile((p: any) => ({ ...p, username, bio: bioDraft }));
     setEditingProfile(false);
   };
 
-  const handleLogout = async () => {
-    Alert.alert("Log Out", "Are you sure you want to log out?", [
+  const handleLogout = () => {
+    Alert.alert("Log Out", "Are you sure?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Log Out",
         style: "destructive",
-        onPress: async () => await supabase.auth.signOut(),
+        onPress: () => supabase.auth.signOut(),
       },
     ]);
   };
 
-  const handleDisabled = () => {
-    const isDisabled =
-      usernameDraft === profile.username && bioDraft === profile.bio;
-    if (isDisabled) return true;
-  };
+  const saveDisabled =
+    usernameDraft === profile?.username && bioDraft === profile?.bio;
 
-  if (loading) {
+  if (loading)
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={DarkTheme.PRIMARY_BUTTON} />
       </View>
     );
-  }
 
   if (!profile) return null;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Top action row */}
       <View style={styles.topBar}>
         <Text style={styles.topBarTitle}>
           Social<Text style={{ color: "#fff" }}>Hub</Text>
         </Text>
+
         <TouchableOpacity onPress={handleLogout} style={styles.iconButton}>
           <Ionicons name="log-out-outline" size={22} color="#EBEBF5" />
         </TouchableOpacity>
@@ -228,6 +214,7 @@ const Header = () => {
             }
             style={styles.avatar}
           />
+
           {uploading && (
             <ActivityIndicator
               style={styles.uploadingIndicator}
@@ -269,7 +256,10 @@ const Header = () => {
       </View>
 
       <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.editButton} onPress={openEditModal}>
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={() => setEditingProfile(true)}
+        >
           <Text style={styles.editText}>Edit Profile</Text>
         </TouchableOpacity>
       </View>
@@ -297,13 +287,9 @@ const Header = () => {
             />
 
             <TouchableOpacity
-              style={
-                handleDisabled()
-                  ? { ...styles.saveButton, opacity: 0.5 }
-                  : styles.saveButton
-              }
+              style={[styles.saveButton, saveDisabled && { opacity: 0.5 }]}
               onPress={handleProfileSave}
-              disabled={handleDisabled()}
+              disabled={saveDisabled}
             >
               <Text style={styles.saveText}>Save Changes</Text>
             </TouchableOpacity>
