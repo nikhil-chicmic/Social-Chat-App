@@ -206,7 +206,7 @@ const UploadScreen = () => {
 export default UploadScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: 20, paddingBottom: 40 },
+  container: { flex: 1, paddingHorizontal: 20, paddingBottom: 100 },
 
   header: { marginTop: 10, marginBottom: 24 },
 
